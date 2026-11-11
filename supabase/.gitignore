@@ -1,0 +1,9 @@
+# Supabase
+.branches
+.temp
+
+# Secretos locales de las Edge Functions
+functions/.env
+.env
+.env.*
+!functions/.env.example
