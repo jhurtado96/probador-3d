@@ -15,9 +15,13 @@ def test_examples_validate_against_their_schema(f):
     assert problems(schema, example(f)) == []
 
 
-def test_drape_example_output_matches_callback_output_schema():
-    out = example("Job.drape-succeeded.json")["output"]
-    validate("job_callback", out, OUTPUT_DEF["drape"])
+def test_job_output_keeps_only_references_not_the_worker_output():
+    # A1: jobs.output guarda ids (JobResult), no la salida del worker (que lleva GLB, medidas y holguras).
+    job = example("Job.drape-succeeded.json")
+    validate("job", job)
+    assert set(job["output"]) == {"drape_cache_id", "fit_result_id", "cache_hit"}
+    with pytest.raises(ContractError):
+        validate("job_callback", job["output"], OUTPUT_DEF["drape"])
 
 
 def test_dispatch_and_callback_examples_are_valid():

@@ -10,6 +10,9 @@ from .errors import ConfigError
 
 JOB_TYPES = ("avatar", "garment", "drape", "color")
 DEFAULT_GPU = {"avatar": "A10G", "garment": "T4", "drape": "A10G", "color": "T4"}
+# Plazo de un intento, igual que private.job_timeout de la API (B4): Modal corta la función a la vez que la API da el
+# intento por vencido, así un intento viejo no sigue corriendo mientras se despacha el siguiente.
+JOB_TIMEOUT_S = {"avatar": 600, "garment": 600, "drape": 600, "color": 300}
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -63,3 +66,5 @@ class Config:
                 raise ConfigError("En producción hacen falta PROBADOR_DISPATCH_SECRET y PROBADOR_CALLBACK_SECRET")
             if self.allow_insecure_localhost:
                 raise ConfigError("PROBADOR_ALLOW_INSECURE_LOCALHOST no se admite en producción")
+            if not self.allowed_url_hosts:
+                raise ConfigError("En producción hace falta PROBADOR_ALLOWED_URL_HOSTS (host del proyecto de Supabase)")

@@ -57,6 +57,14 @@ def make_dispatch(job_type: str, **over):
     return copy.deepcopy(d)
 
 
+def make_notice(dispatch: dict) -> dict:
+    """JobDispatchNotice de un dispatch: lo único que pasa por la cola de GPU (A3)."""
+    return {
+        "job_id": dispatch["job_id"], "type": dispatch["type"], "attempt": dispatch["attempt"],
+        "dispatch_url": "https://example.supabase.co/functions/v1/job-dispatch", "contracts_version": "0.4.0",
+    }
+
+
 @pytest.fixture
 def cfg():
     return Config(callback_secret=SECRET, dispatch_secret="dispatch-secret")

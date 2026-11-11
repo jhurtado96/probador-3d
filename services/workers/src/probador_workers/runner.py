@@ -10,9 +10,9 @@ from . import __version__
 from .config import Config
 from .errors import ContractError, JobFailure, NotImplementedJob, TransferError
 from .handlers import JobContext, get_handler
-from .http_client import CallbackSink, HttpCallbackSink, TransferClient
+from .http_client import CallbackSink, HttpCallbackSink, TransferClient, fetch_dispatch
 from .logging_setup import log_event, redact
-from .schemas import validate_callback, validate_dispatch
+from .schemas import validate_callback, validate_dispatch, validate_notice
 
 log = logging.getLogger("probador.runner")
 
@@ -84,3 +84,31 @@ def execute_http(dispatch: dict[str, Any], cfg: Config, fake: bool | None = None
     """Variante de producción: callback real a `callback_url`."""
     sink = HttpCallbackSink(dispatch["callback_url"], cfg)
     return execute(dispatch, cfg, sink, fake=fake)
+
+
+def execute_notice(
+    notice: dict[str, Any],
+    cfg: Config,
+    fetch: Callable[[dict[str, Any], Config], dict[str, Any]] = fetch_dispatch,
+    sink_factory: Callable[[dict[str, Any]], CallbackSink] | None = None,
+    transfer: TransferClient | None = None,
+    fake: bool | None = None,
+) -> None:
+    """A3: aviso de despacho -> pide el JobDispatch a la API -> lo procesa.
+
+    No devuelve nada a propósito: en Modal, lo que devuelve una función lanzada con `.spawn()` se guarda como resultado
+    de la llamada en el plano de control del proveedor. El resultado viaja solo por el callback firmado.
+    """
+    validate_notice(notice)
+    ctx_log = {"job_id": notice["job_id"], "job_type": notice["type"], "attempt": notice["attempt"]}
+    dispatch = fetch(notice, cfg)
+    if (dispatch.get("job_id"), dispatch.get("attempt"), dispatch.get("type")) != (
+        notice["job_id"],
+        notice["attempt"],
+        notice["type"],
+    ):
+        log_event(log, "dispatch_mismatch", level=logging.WARNING, **ctx_log)
+        raise ContractError("JobDispatch", ["job_id/attempt/type no coinciden con el aviso"])
+    sink = sink_factory(dispatch) if sink_factory else HttpCallbackSink(dispatch["callback_url"], cfg)
+    execute(dispatch, cfg, sink, transfer=transfer, fake=fake)
+    return None

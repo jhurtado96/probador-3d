@@ -5,6 +5,7 @@ Los errores nunca incluyen la URL (httpx la mete en sus mensajes, por eso se cap
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 from typing import Any, Callable, Protocol
@@ -25,12 +26,23 @@ for _n in ("httpx", "httpcore"):
     logging.getLogger(_n).setLevel(logging.WARNING)
 
 
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 def check_url(url: str, cfg: Config) -> None:
+    """Defensa contra SSRF (B3): https, sin IP literales ni `localhost` (salvo desarrollo) y, si hay lista, solo sus hosts."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     local_ok = cfg.allow_insecure_localhost and host in _LOCAL
     if parts.scheme != "https" and not (parts.scheme == "http" and local_ok):
         raise TransferError("url rechazada: se exige https")
+    if not local_ok and (not host or host in _LOCAL or _is_ip_literal(host) or host.endswith((".local", ".internal"))):
+        raise TransferError("url rechazada: host local, privado o IP literal")
     if cfg.allowed_url_hosts and not local_ok and not any(host == h or host.endswith("." + h) for h in cfg.allowed_url_hosts):
         raise TransferError("url rechazada: host fuera de PROBADOR_ALLOWED_URL_HOSTS")
 
@@ -68,6 +80,35 @@ class TransferClient:
         if r.status_code >= 300:
             raise TransferError(f"upload {label}: HTTP {r.status_code}")
         log_event(log, "uploaded", label=label, bytes=len(data))
+
+
+def fetch_dispatch(notice: dict[str, Any], cfg: Config, client: httpx.Client | None = None) -> dict[str, Any]:
+    """Pide el JobDispatch completo a `notice["dispatch_url"]` (A3) con una petición firmada con el secreto del callback.
+
+    El JobDispatch (URLs firmadas a fotos, medidas, user_id) viaja directo de la API al contenedor y no pasa por la cola
+    del proveedor de GPU. La API lo entrega una sola vez por intento (409 si se repite: aviso reenviado o intento viejo).
+    """
+    if not cfg.callback_secret:
+        raise ConfigError("falta PROBADOR_CALLBACK_SECRET")
+    url = notice["dispatch_url"]
+    check_url(url, cfg)
+    body = canonical_body({"job_id": notice["job_id"], "attempt": notice["attempt"]})
+    headers = {"content-type": "application/json", **signed_headers(body, cfg.callback_secret)}
+    own = client is None
+    client = client or httpx.Client(timeout=cfg.http_timeout_s, follow_redirects=False)
+    try:
+        r = client.post(url, content=body, headers=headers)
+    except httpx.HTTPError as e:
+        raise TransferError(f"dispatch fetch: {type(e).__name__}") from None
+    finally:
+        if own:
+            client.close()
+    if r.status_code != 200:
+        raise TransferError(f"dispatch fetch: HTTP {r.status_code}")
+    try:
+        return r.json()
+    except ValueError:
+        raise TransferError("dispatch fetch: respuesta no es JSON") from None
 
 
 class CallbackSink(Protocol):

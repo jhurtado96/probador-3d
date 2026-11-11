@@ -1,7 +1,11 @@
 """Punto de entrada Modal. Despliegue: `modal deploy modal_app.py` (ver README).
 
-Diseño: un endpoint HTTP ligero (`dispatch`, CPU, región UE) valida y firma-verifica el JobDispatch, lo encola con
-`.spawn()` en la función GPU del tipo de job y devuelve 202 enseguida; el resultado vuelve por callback firmado.
+Diseño (A3, revisión de la fase 0): un endpoint HTTP ligero (`dispatch`, CPU, región UE) verifica la firma del
+JobDispatchNotice, que solo lleva job_id, tipo, intento y la URL de job-dispatch, y lo encola con `.spawn()` en la
+función GPU del tipo de job. Lo que Modal guarda como entrada de la llamada es, por tanto, ese aviso sin datos
+personales. Ya en el contenedor, la función pide el JobDispatch completo (URLs firmadas a la foto, medidas, user_id)
+directamente a la API, lo procesa, devuelve el resultado por callback firmado y retorna `None`, de modo que Modal no
+guarda ningún resultado. Timeout por tipo igual al plazo de la API (B4).
 La región UE y la GPU por tipo salen de variables de entorno LEÍDAS EN EL DESPLIEGUE (ver README).
 No hay credenciales de base de datos: solo los secretos de firma HMAC (Modal Secret `probador-workers`).
 """
@@ -15,7 +19,7 @@ from pathlib import Path
 import modal
 from fastapi import HTTPException, Request
 
-from probador_workers.config import DEFAULT_GPU, JOB_TYPES
+from probador_workers.config import DEFAULT_GPU, JOB_TIMEOUT_S, JOB_TYPES
 from probador_workers.schemas import schemas_dir
 
 REGION = os.environ.get("PROBADOR_MODAL_REGION", "eu-west")  # (verificar) nombre de región/plan Modal para UE
@@ -42,14 +46,15 @@ def _gpu(job_type: str):
 
 
 def _make_gpu_function(job_type: str):
-    @app.function(name=f"run_{job_type}", gpu=_gpu(job_type), region=REGION, timeout=15 * 60, retries=0)
-    def run(dispatch: dict) -> dict:
+    @app.function(name=f"run_{job_type}", gpu=_gpu(job_type), region=REGION, timeout=JOB_TIMEOUT_S[job_type], retries=0)
+    def run(notice: dict) -> None:
         from probador_workers.config import Config
         from probador_workers.logging_setup import setup_logging
-        from probador_workers.runner import execute_http
+        from probador_workers.runner import execute_notice
 
         setup_logging()
-        return execute_http(dispatch, Config.from_env())
+        execute_notice(notice, Config.from_env())
+        return None  # nada que Modal pueda guardar como resultado
 
     return run
 
@@ -62,7 +67,7 @@ RUNNERS = {t: _make_gpu_function(t) for t in JOB_TYPES}
 async def dispatch(request: Request) -> dict:
     from probador_workers.config import Config
     from probador_workers.errors import ContractError
-    from probador_workers.schemas import validate_dispatch
+    from probador_workers.schemas import validate_notice
     from probador_workers.signing import verify_request
 
     cfg = Config.from_env()
@@ -71,8 +76,9 @@ async def dispatch(request: Request) -> dict:
         raise HTTPException(401, "invalid signature")
     try:
         data = json.loads(raw)
-        validate_dispatch(data)
+        validate_notice(data)
     except (ValueError, ContractError) as e:
         raise HTTPException(422, e.problems if isinstance(e, ContractError) else ["invalid json"])
+    # Solo el aviso (ids) entra en la cola de Modal.
     RUNNERS[data["type"]].spawn(data)
     return {"accepted": True, "job_id": data["job_id"], "attempt": data["attempt"]}

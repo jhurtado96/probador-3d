@@ -95,6 +95,11 @@ def validate_dispatch(d: Any) -> None:
         raise ContractError("JobDispatch", [f"input_urls: falta URL para {len(missing)} ruta(s) de entrada"])
 
 
+def validate_notice(n: Any) -> None:
+    """JobDispatchNotice: solo identificadores (A3). `additionalProperties: false` rechaza cualquier dato de más."""
+    validate("job_dispatch_notice", n, what="JobDispatchNotice")
+
+
 def validate_callback(cb: Any, job_type: str) -> None:
     validate("job_callback", cb, what="JobCallback")
     if cb["status"] == "succeeded":
