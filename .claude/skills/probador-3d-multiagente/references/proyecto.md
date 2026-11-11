@@ -1,18 +1,18 @@
 # Resumen del plan del proyecto
 
-Fuente de verdad: https://claude.ai/artifact/NTjptmfYWP4XQUwfVG3m5C (si difiere de este resumen, manda el documento).
+Fuente de verdad del plan: https://claude.ai/artifact/NTjptmfYWP4XQUwfVG3m5C (si difiere de este resumen, manda el documento). Las decisiones técnicas tomadas después están en `docs/architecture.md` §7 (registro de decisiones) y mandan sobre el plan; las de la fase 0 ya están reflejadas en la tabla.
 
 ## Módulos
 
 | Módulo | Enfoque | Tecnologías clave |
 |---|---|---|
-| Avatar 3D | Foto de cuerpo entero + altura → SMPL-X con medidas | MediaPipe (validar pose), SMPLer-X / HMR 2.0 / Multi-HMR; textura opcional con LHM, ECON o PSHuman; licencia SMPL-X o alternativa abierta (Anny) |
-| Prenda 3D | Nivel 1: plantillas paramétricas + textura; nivel 2: foto → patrón de costura; nivel 3: 3D nativo de marca | SAM 2 / BiRefNet, modelo de visión para atributos, Sewformer / ChatGarment / GarmentCode, CLO3D / Style3D |
-| Drapeado | Simulación en servidor, cacheada por avatar + prenda + talla | NVIDIA Warp / XPBD, HOOD, SNUG |
+| Avatar 3D | Foto de cuerpo entero + altura → cuerpo paramétrico con medidas ISO 8559-1. El avatar es independiente de la topología: GLB + medidas + nombre del modelo corporal | MediaPipe (validar pose), SAM 3D Body → MHR + ajuste de forma propio, port de SMPL-Anthropometry; Anny como alternativa abierta y SOMA-X como posible adaptador. SMPL-X y sus estimadores (SMPLer-X, HMR 2.0, Multi-HMR) no son comerciales |
+| Prenda 3D | Toda prenda es un patrón de costura de GarmentCode. Nivel 1: configuración cerrada por categoría + textura; nivel 2: foto → parámetros libres del patrón; nivel 3: 3D nativo de marca | SAM 2, modelo de visión para atributos, GarmentCode (ChatGarment como referencia; Sewformer descartado), CLO3D / Style3D |
+| Drapeado | Simulación física estática en servidor, cacheada por avatar + prenda + talla | NVIDIA Warp / Newton (Apache 2.0); el drapeado neuronal (HOOD, ContourCraft) exige SMPL y queda para investigación |
 | Armario y outfits | Subida, etiquetado automático corregible, creador de outfits en 3D | — |
 | Recomendaciones | Embeddings + compatibilidad + estilista con IA; ranking = 0,4 compatibilidad + 0,3 color + 0,3 ajuste | FashionCLIP / Marqo-FashionSigLIP, pgvector |
 | Tiendas | Feeds de afiliación, normalización de tallas, mismo pipeline 3D | Awin, Rakuten, CJ, Impact, Zalando, Shopify Storefront |
-| Colorimetría | Selfie + referencia de blanco → CIELAB → subtono, valor, intensidad, contraste → 12 estaciones → paleta; puntuación ΔE2000 por prenda (más peso cerca de la cara) | SegFormer/BiSeNet face parsing, MediaPipe Face Mesh |
+| Colorimetría | Selfie + referencia de blanco → CIELAB → subtono, valor, intensidad, contraste → 12 estaciones → paleta; puntuación ΔE2000 por prenda (más peso cerca de la cara) | MediaPipe Face Landmarker y segmentador multiclase (los pesos públicos de SegFormer/BiSeNet no son comerciales) |
 | Fit | Holgura por zona = medida prenda − medida cuerpo; distinguir oversize de diseño vs talla mayor por proporciones (hombro caído, manga, ancho/largo) y reglas de escalado; preferencias aprendidas | Tablas de medidas de marca, DeepFashion2 keypoints, foto con objeto de referencia, LiDAR/ARKit, gradient boosting |
 
 ## Arquitectura

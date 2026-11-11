@@ -17,7 +17,7 @@ Bloque de contexto común (pégalo al inicio de cualquier prompt y recórtalo se
 
 ```
 Proyecto: app "probador virtual 3D". El usuario se escanea con una foto de cuerpo
-entero (avatar SMPL-X con medidas reales y altura como escala), sube su ropa
+entero (avatar 3D con medidas reales y altura como escala), sube su ropa
 (prendas 3D), combina outfits sobre su avatar y recibe recomendaciones de tiendas
 según talla, fit preferido (holgura por zonas) y colorimetría (12 estaciones).
 Stack: React Native/Expo + React Three Fiber; Supabase (Postgres, pgvector,
@@ -87,7 +87,7 @@ Devuelve: ficheros cambiados, cómo ejecutarlo, resultados medidos y limitacione
 
 ## 3. Ingeniero/a 3D (`opus`)
 
-Visor con React Three Fiber, carga de GLB, skinning sobre el esqueleto SMPL-X, capas de prendas, rendimiento en móvil (LOD, KTX2, Draco/Meshopt).
+Visor con React Three Fiber, carga de GLB, skinning sobre el esqueleto que trae el GLB del avatar, capas de prendas, rendimiento en móvil (LOD, KTX2, Draco/Meshopt).
 
 ```
 <contexto común>

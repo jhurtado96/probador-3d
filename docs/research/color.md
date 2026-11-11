@@ -211,7 +211,22 @@ Los asesores también pueden estar sesgados (el sistema de estaciones nació par
 
 Devolver un objeto `ColorProfile` con solo valores calculados; el selfie se borra al terminar (RGPD) y el tono de piel se trata como dato sensible con consentimiento explícito.
 
-Propuesta para `packages/contracts` (a acordar con quien defina los contratos):
+**Acordado (2026-11-11):** el tipo vigente es `ColorProfile` de `packages/contracts` (v0.2.0), que ya recoge esta propuesta con otros nombres. La propuesta de abajo se conserva como referencia; no es el contrato. Correspondencia:
+
+| Propuesta | Contrato |
+|---|---|
+| `chroma` | `intensity` |
+| `alternatives[].probability` (hasta 2) | `alternatives[].confidence` (hasta 3) |
+| `scores` (T, V, S en z; K en ΔL*) | `scores` normalizados para la interfaz: `undertone` −1…1, `value`, `intensity` y `contrast` 0…1. El pipeline proyecta sus valores a esos rangos |
+| `best`, `avoid`, `neutrals` | `palettes.best`, `palettes.avoid`, `palettes.neutrals` (más `palettes.accents`) |
+| `metal: "mixed"` | `metal: "any"` (el contrato añade `rose_gold`) |
+| `measurements.skin`, `hair`, `eyes` | `skin_lab`, `hair_lab`, `eye_lab` (claves `l`, `a`, `b` en minúscula) |
+| `measurements.hair.dyed`, `ita`, `skinHue` | `hair_dyed`, `ita`, `skin_hue_deg` |
+| `quality.flags`, `quality.captureScore` | `quality.flags` (lista cerrada `COLOR_QUALITY_FLAGS`), `quality.capture_score` |
+| `algorithmVersion`, `createdAt` | `pipeline_version`, `created_at` (y `updated_at`) |
+| — | `white_balanced`, `user_overridden`, y `undertone` admite además `olive` para la corrección manual |
+
+Propuesta original:
 
 ```ts
 type Season =

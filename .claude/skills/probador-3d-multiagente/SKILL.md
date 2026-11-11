@@ -9,7 +9,7 @@ Esta skill convierte una petición sobre el proyecto en un trabajo repartido ent
 
 ## Contexto del proyecto
 
-App de moda donde el usuario se escanea con una foto de cuerpo entero (avatar 3D SMPL-X con medidas reales), sube su ropa (convertida en prendas 3D), combina outfits sobre su avatar y recibe recomendaciones de tiendas según talla, fit preferido y colorimetría.
+App de moda donde el usuario se escanea con una foto de cuerpo entero (avatar 3D con medidas reales), sube su ropa (convertida en prendas 3D), combina outfits sobre su avatar y recibe recomendaciones de tiendas según talla, fit preferido y colorimetría.
 
 - Plan completo (documento vivo): https://claude.ai/artifact/NTjptmfYWP4XQUwfVG3m5C. Léelo con las herramientas de docs (no con web fetch) cuando necesites detalles de una sección; es la fuente de verdad si difiere de este resumen.
 - Resumen de módulos, fases y decisiones técnicas: `references/proyecto.md`. Léelo antes de repartir trabajo si no tienes el plan en contexto.
@@ -20,7 +20,7 @@ Cada modelo tiene su sitio. El criterio es: **cuánto razonamiento difícil exig
 
 | Modelo (`model` en la herramienta Agent) | Úsalo para | Evítalo para |
 |---|---|---|
-| `fable` (Claude Fable 5.2, el más capaz; ~2x el precio de Opus, turnos largos) | Decisiones de arquitectura que condicionan meses de trabajo; diseño de algoritmos difíciles (ajuste SMPL-X, foto → patrón de costura, simulación de tela, clasificador oversize vs talla mayor, colorimetría robusta a la luz y sin sesgo de tono de piel); evaluación técnica de la fase 0 (go/no-go); revisión final de cambios críticos (privacidad RGPD, seguridad, integración entre módulos); depurar fallos que otros agentes no resolvieron | Tareas mecánicas, CRUD, UI, búsquedas, resúmenes, ingesta de datos: paga mucho más sin mejorar el resultado |
+| `fable` (Claude Fable 5.2, el más capaz; ~2x el precio de Opus, turnos largos) | Decisiones de arquitectura que condicionan meses de trabajo; diseño de algoritmos difíciles (ajuste de forma del cuerpo, foto → patrón de costura, simulación de tela, clasificador oversize vs talla mayor, colorimetría robusta a la luz y sin sesgo de tono de piel); evaluación técnica de la fase 0 (go/no-go); revisión final de cambios críticos (privacidad RGPD, seguridad, integración entre módulos); depurar fallos que otros agentes no resolvieron | Tareas mecánicas, CRUD, UI, búsquedas, resúmenes, ingesta de datos: paga mucho más sin mejorar el resultado |
 | `opus` (Claude Opus 5.5, modelo por defecto) | Implementación de módulos con lógica no trivial: pipelines de visión, escena 3D con React Three Fiber, API, ranking de recomendaciones; revisión de código general; investigación técnica con síntesis | Exploración masiva de ficheros o lectura de mucha documentación |
 | `sonnet` (Claude Sonnet 5.5) | Código del día a día bien especificado: componentes de UI, endpoints, migraciones, tests, scripts de ingesta de catálogos, normalización de tallas | Diseño de algoritmos nuevos o decisiones de arquitectura |
 | `haiku` (Claude Haiku 5.5, muy barato) | Lectura y búsqueda: localizar código, extraer datos de muchas páginas o ficheros, etiquetar en lote, resumir documentación | Cualquier cosa que requiera criterio o escribir código importante |
@@ -86,7 +86,8 @@ Responde con: qué se hizo, qué agente y modelo hizo cada parte, qué queda abi
 Inclúyelas en el prompt de cualquier agente que toque datos personales, modelos de ML o el pipeline 3D:
 
 - **Privacidad (RGPD):** las fotos de cuerpo y cara se borran tras procesarlas; solo se guardan valores calculados. Servidores en la UE, consentimiento explícito, borrado total.
-- **Licencias:** comprueba la licencia comercial de cada modelo o dataset (SMPL-X necesita licencia; muchos modelos de investigación son solo no comerciales).
-- **Cuerpo paramétrico:** el avatar es SMPL-X (o alternativa compatible); las prendas y la simulación se apoyan en ese esqueleto.
+- **Licencias:** comprueba la licencia comercial de cada modelo o dataset (SMPL-X y los pesos de face parsing entrenados con CelebAMask-HQ no son comerciales; muchos modelos de investigación tampoco).
+- **Cuerpo paramétrico:** el avatar no depende de la topología del modelo corporal. Su contrato es GLB + medidas en cm + nombre y versión del modelo (MHR con SAM 3D Body en la fase 0; SMPL-X solo con licencia comercial). Prendas, drapeado, fit y visor consumen el GLB y las medidas, nunca la topología.
+- **Decisiones vigentes:** `docs/architecture.md` §7 (registro de decisiones) manda sobre el resumen del plan: face parsing con MediaPipe, prendas como patrón de GarmentCode, drapeado con Newton/Warp. Los contratos entre app, API y workers están en `packages/contracts`.
 - **Formato 3D:** glTF/GLB en todo el sistema.
 - **Sesgo:** la colorimetría y la estimación corporal se validan con todos los tonos de piel y tipos de cuerpo.

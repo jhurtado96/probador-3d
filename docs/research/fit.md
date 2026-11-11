@@ -21,7 +21,7 @@ holgura_pct_z = holgura_z / cuerpo_z
 ```
 
 - `prenda_z`: contorno (ancho en plano × 2) o longitud.
-- `cuerpo_z`: medida del avatar SMPL-X en la misma zona.
+- `cuerpo_z`: medida del avatar en la misma zona (`Avatar.measurements`, sea cual sea el modelo corporal).
 - `elasticidad`: 0 en tejido plano, 0,05–0,15 en punto, hasta 0,3 con elastano; k_z = 1 en contornos, 0 en largos.
 - Incertidumbre: σ_holgura = √(σ_cuerpo² + σ_prenda²); cada etiqueta lleva la probabilidad de cada nivel.
 
