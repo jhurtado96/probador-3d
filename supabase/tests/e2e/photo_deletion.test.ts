@@ -11,13 +11,14 @@
 // Uso: ver supabase/README.md («Tests»); se ejecuta con --config functions/deno.json
 // (mismo mapa de imports que las funciones). Variables:
 //   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL,
-//   JOB_CALLBACK_SECRET, MAINTENANCE_SECRET (los mismos que usa functions serve)
+//   PROBADOR_CALLBACK_SECRET, PROBADOR_DISPATCH_SECRET, MAINTENANCE_SECRET (los
+//   mismos que usa functions serve, que NO debe tener PROBADOR_ALLOW_FAKE_WORKERS)
 //   FAKE_WORKER_PORT (8787; WORKER_DISPATCH_URL de las funciones debe apuntar aquí)
 
 import { strict as assert } from "node:assert";
 import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
-import { signBody } from "../../functions/_shared/hmac.ts";
+import { signedHeaders, verifyRequest } from "../../functions/_shared/hmac.ts";
 import type { JobDispatch } from "@probador/contracts";
 
 const env = (k: string, d?: string) => {
@@ -29,18 +30,20 @@ const URL_ = env("SUPABASE_URL", "http://127.0.0.1:54321");
 const ANON = env("SUPABASE_ANON_KEY");
 const SERVICE = env("SUPABASE_SERVICE_ROLE_KEY");
 const DB_URL = env("SUPABASE_DB_URL", "postgresql://postgres:postgres@127.0.0.1:54322/postgres");
-const CALLBACK_SECRET = env("JOB_CALLBACK_SECRET");
+const CALLBACK_SECRET = env("PROBADOR_CALLBACK_SECRET");
+const DISPATCH_SECRET = env("PROBADOR_DISPATCH_SECRET");
 const MAINTENANCE_SECRET = env("MAINTENANCE_SECRET");
 const WORKER_PORT = Number(env("FAKE_WORKER_PORT", "8787"));
 
 const admin = createClient(URL_, SERVICE, { auth: { persistSession: false } });
 const sql = postgres(DB_URL, { max: 1 });
 
-// Worker falso: guarda cada JobDispatch que recibe.
+// Worker falso: verifica la firma del despacho (la misma que la del callback) y guarda cada JobDispatch.
 const dispatches = new Map<string, JobDispatch>();
 const worker = Deno.serve({ port: WORKER_PORT, hostname: "0.0.0.0", onListen: () => {} }, async (req) => {
-  const d = await req.json() as JobDispatch;
-  assert.equal(req.headers.get("authorization")?.startsWith("Bearer "), true, "dispatch sin token");
+  const raw = await req.text();
+  if (!(await verifyRequest(DISPATCH_SECRET, raw, req.headers))) return new Response(null, { status: 401 });
+  const d = JSON.parse(raw) as JobDispatch;
   dispatches.set(d.job_id, d);
   return new Response(null, { status: 202 });
 });
@@ -67,14 +70,15 @@ async function callFn(name: string, token: string | null, body: unknown, method 
   return { status: res.status, body: await res.json() };
 }
 
-async function callback(payload: unknown, sign = true) {
+/** sign: "ok" firma bien; "forged" firma con otro secreto; "old" es una firma válida de hace 10 minutos (reenvío). */
+async function callback(payload: unknown, sign: "ok" | "forged" | "old" = "ok") {
   const raw = JSON.stringify(payload);
+  const headers = sign === "forged"
+    ? await signedHeaders("otro-secreto", raw)
+    : await signedHeaders(CALLBACK_SECRET, raw, Date.now() - (sign === "old" ? 600_000 : 0));
   const res = await fetch(`${URL_}/functions/v1/job-callback`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-probador-signature": sign ? await signBody(CALLBACK_SECRET, raw) : "sha256=" + "0".repeat(64),
-    },
+    headers: { "Content-Type": "application/json", ...headers },
     body: raw,
   });
   return { status: res.status, body: await res.json() };
@@ -158,6 +162,8 @@ Deno.test({
       const d = await waitForDispatch(jobId);
       assert.equal(d.attempt, 1);
       assert.equal(d.type, "avatar");
+      assert.equal(d.user_id, uid, "el dispatch lleva el dueño del job");
+      assert.ok(d.contracts_version);
       const inputUrl = d.input_urls[`raw-uploads/${uid}/cuerpo.jpg`];
       assert.ok(inputUrl, "falta la URL firmada de la foto");
       const dl = await fetch(inputUrl);
@@ -171,15 +177,23 @@ Deno.test({
         body: GLB,
       });
       assert.equal(put.status, 200, await put.text());
+      assert.equal(glb.content_type, "model/gltf-binary");
+      const putAgain = await fetch(glb.upload_url, {
+        method: "PUT",
+        headers: { "content-type": "model/gltf-binary" },
+        body: GLB,
+      });
+      await putAgain.body?.cancel();
+      assert.notEqual(putAgain.status, 200, "la URL de subida solo admite una subida (sin sobrescribir)");
 
       const now = new Date().toISOString();
       const output = {
         avatar: {
           id: crypto.randomUUID(),
           user_id: uid,
-          body_model: "smplx",
-          model_version: "smplx-1.1/avatar-test",
-          smplx: { gender: "neutral", betas: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+          body_model: "mhr",
+          model_version: "mhr-1.0/avatar-test",
+          shape: { params: new Array(45).fill(0) },
           measurements: {
             height_cm: 172,
             chest_cm: 96,
@@ -197,15 +211,17 @@ Deno.test({
           created_at: now,
           updated_at: now,
         },
-        input_deleted_at: now,
       };
 
-      const forged = await callback(
-        { job_id: jobId, attempt: 1, status: "succeeded", output, worker_version: "t" },
-        false,
-      );
+      const success = { job_id: jobId, attempt: 1, status: "succeeded", output, worker_version: "t" };
+      const forged = await callback(success, "forged");
       assert.equal(forged.status, 401, "firma inválida aceptada");
-      assert.deepEqual(await rawObjects(uid), [`${uid}/cuerpo.jpg`], "una firma inválida no debe borrar nada");
+      const replayed = await callback(success, "old");
+      assert.equal(replayed.status, 401, "firma válida pero antigua (reenvío) aceptada");
+      const fake = await callback({ ...success, fake: true });
+      assert.equal(fake.status, 422, "callback de worker fake aceptado sin PROBADOR_ALLOW_FAKE_WORKERS");
+      assert.equal(fake.body.error.code, "fake_not_allowed");
+      assert.deepEqual(await rawObjects(uid), [`${uid}/cuerpo.jpg`], "un callback rechazado no debe borrar nada");
 
       const invalid = await callback({
         job_id: jobId,
@@ -253,7 +269,9 @@ Deno.test({
 
       const { data: job } = await user.from("jobs").select("*").eq("id", jobId).single();
       assert.equal(job!.status, "succeeded");
-      assert.ok(job!.output.input_deleted_at);
+      assert.ok(job!.input_deleted_at, "la API anota el borrado en jobs.input_deleted_at");
+      assert.equal(job!.output.input_deleted_at, undefined, "el borrado no forma parte de la salida del worker");
+      assert.equal(job!.fake, false);
       const { data: avatars } = await user.from("avatars").select("glb_path");
       assert.deepEqual(avatars, [{ glb_path: glb.path }]);
       const signed = await user.storage.from("assets").createSignedUrl(glb.path.slice("assets/".length), 60);

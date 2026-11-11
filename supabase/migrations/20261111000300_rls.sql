@@ -112,7 +112,7 @@ create policy garments_insert_own on public.garments
   for insert to authenticated
   with check (
     user_id = (select auth.uid()) and status = 'processing' and store_product_id is null
-    and glb_path is null and image_path is null and embedding is null);
+    and glb_path is null and image_path is null and sewing_pattern_path is null and embedding is null);
 create policy garments_update_own on public.garments
   for update to authenticated
   using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
@@ -150,11 +150,9 @@ create policy garment_measurements_delete_own on public.garment_measurements
 grant select, delete on public.fit_results to authenticated;
 
 create policy fit_results_select_own on public.fit_results
-  for select to authenticated
-  using (exists (select 1 from public.avatars a where a.id = avatar_id and a.user_id = (select auth.uid())));
+  for select to authenticated using (user_id = (select auth.uid()));
 create policy fit_results_delete_own on public.fit_results
-  for delete to authenticated
-  using (exists (select 1 from public.avatars a where a.id = avatar_id and a.user_id = (select auth.uid())));
+  for delete to authenticated using (user_id = (select auth.uid()));
 
 -- -----------------------------------------------------------------------------
 -- user_fit_preferences: CRUD propio.

@@ -3,6 +3,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  CONTRACTS_VERSION,
+  type DrapeJobContext,
   type DrapeJobInput,
   type GarmentJobInput,
   type JobDispatch,
@@ -11,6 +13,7 @@ import {
   validate,
 } from "./contracts.ts";
 import { env, optionalEnv } from "./env.ts";
+import { signedHeaders } from "./hmac.ts";
 import { ASSETS_BUCKET, splitPath } from "./storage.ts";
 
 /** Vida de las URLs firmadas de descarga que recibe el worker (docs/architecture.md §3.2). */
@@ -38,40 +41,86 @@ function publicUrl(url: string): string {
   return pub && url.startsWith(internal) ? pub + url.slice(internal.length) : url;
 }
 
-/** Artefactos que cada tipo de job sube, con su ruta en el bucket assets. */
-export function planOutputs(job: ClaimedJob): Array<{ name: string; path: string }> {
+type PlannedOutput = Pick<SignedUpload, "name" | "path" | "content_type">;
+
+/**
+ * Artefactos que cada tipo de job sube, con su ruta en el bucket assets. La
+ * ruta es única por job e intento y solo admite una subida (sin sobrescribir).
+ */
+export function planOutputs(job: ClaimedJob): PlannedOutput[] {
   const owner = job.user_id ?? "catalog";
   const stem = `${job.id}-a${job.attempt}`;
+  const glb = "model/gltf-binary";
   switch (job.type) {
     case "avatar":
-      return [{ name: "glb", path: `${ASSETS_BUCKET}/${owner}/avatars/${stem}.glb` }];
+      return [{ name: "glb", path: `${ASSETS_BUCKET}/${owner}/avatars/${stem}.glb`, content_type: glb }];
     case "garment": {
-      const gid = (job.input as unknown as GarmentJobInput).garment_id;
+      const dir = `${ASSETS_BUCKET}/${owner}/garments/${(job.input as unknown as GarmentJobInput).garment_id}`;
       return [
-        { name: "glb", path: `${ASSETS_BUCKET}/${owner}/garments/${gid}/${stem}.glb` },
-        { name: "image", path: `${ASSETS_BUCKET}/${owner}/garments/${gid}/${stem}-cutout.png` },
+        { name: "glb", path: `${dir}/${stem}.glb`, content_type: glb },
+        { name: "image", path: `${dir}/${stem}-cutout.png`, content_type: "image/png" },
+        { name: "sewing_pattern", path: `${dir}/${stem}-pattern.json`, content_type: "application/json" },
       ];
     }
     case "drape":
-      return [{ name: "glb", path: `${ASSETS_BUCKET}/${owner}/drapes/${stem}.glb` }];
+      return [{ name: "glb", path: `${ASSETS_BUCKET}/${owner}/drapes/${stem}.glb`, content_type: glb }];
     case "color":
       return [];
   }
 }
 
 /**
- * Rutas que el worker necesita leer. Para avatar/color/garment son las fotos de
- * raw-uploads. El drapeado no tiene rutas en su entrada (solo ids): se le dan
- * los GLB del avatar y de la prenda (ver discrepancias en supabase/README.md).
+ * Lo que el simulador necesita y la app no envía (DrapeJobInput solo trae
+ * ids): cuerpo, prenda y clave de caché. Las rutas que devuelve se firman y
+ * van en `input_urls`.
  */
-async function inputPathsFor(admin: SupabaseClient, job: ClaimedJob): Promise<string[]> {
-  if (job.type !== "drape") return job.input_paths;
+async function drapeContext(
+  admin: SupabaseClient,
+  job: ClaimedJob,
+): Promise<{ context: DrapeJobContext; paths: string[] }> {
   const input = job.input as unknown as DrapeJobInput;
-  const [{ data: avatar }, { data: garment }] = await Promise.all([
-    admin.from("avatars").select("glb_path").eq("id", input.avatar_id).maybeSingle(),
-    admin.from("garments").select("glb_path").eq("id", input.garment_id).maybeSingle(),
+  const [{ data: avatar, error: e1 }, { data: garment, error: e2 }, { data: sizes, error: e3 }] = await Promise.all([
+    admin.from("avatars")
+      .select("glb_path, body_model, model_version, shape_hash, measurements, measurements_override, measurements_sigma_cm")
+      .eq("id", input.avatar_id).maybeSingle(),
+    admin.from("garments")
+      .select("glb_path, sewing_pattern_path, sewing_pattern_format, level, category, design_fit, attributes")
+      .eq("id", input.garment_id).maybeSingle(),
+    admin.from("garment_measurements").select("size_label, zones, source")
+      .eq("garment_id", input.garment_id).eq("size_label", input.size_label).maybeSingle(),
   ]);
-  return [avatar?.glb_path, garment?.glb_path].filter((p): p is string => typeof p === "string");
+  if (e1 || e2 || e3) throw new Error(`drape context: ${(e1 ?? e2 ?? e3)?.message}`);
+  if (!avatar || !garment) throw new Error("drape context: avatar or garment no longer exists");
+  if (!job.cache_key) throw new Error("drape context: job has no cache_key");
+  if (!garment.category || !garment.design_fit || !(garment.sewing_pattern_path || garment.glb_path)) {
+    throw new Error("drape context: garment is not ready");
+  }
+  const context: DrapeJobContext = {
+    cache_key: job.cache_key,
+    simulator_version: env.drapeSimulatorVersion(),
+    avatar: {
+      glb_path: avatar.glb_path,
+      body_model: avatar.body_model,
+      model_version: avatar.model_version,
+      shape_hash: avatar.shape_hash,
+      // Las correcciones del usuario prevalecen sobre lo estimado.
+      measurements: { ...avatar.measurements, ...(avatar.measurements_override ?? {}) },
+      ...(avatar.measurements_sigma_cm ? { measurements_sigma_cm: avatar.measurements_sigma_cm } : {}),
+    },
+    garment: {
+      sewing_pattern_path: garment.sewing_pattern_path,
+      sewing_pattern_format: garment.sewing_pattern_format,
+      glb_path: garment.glb_path,
+      level: garment.level,
+      category: garment.category,
+      design_fit: garment.design_fit,
+      attributes: garment.attributes ?? {},
+      measurements: sizes ?? null,
+    },
+  };
+  const paths = [avatar.glb_path, garment.sewing_pattern_path, garment.glb_path]
+    .filter((p): p is string => typeof p === "string");
+  return { context, paths };
 }
 
 export type DispatchOutcome = { job_id: string; ok: true } | { job_id: string; ok: false; error: string };
@@ -84,6 +133,9 @@ async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<
     return { job_id: job.id, ok: false, error };
   };
   if (!workerUrl) return await release("WORKER_DISPATCH_URL is not configured");
+  // Nunca se despacha sin firmar: el worker rechazaría la petición.
+  const secret = env.dispatchSecret();
+  if (!secret) return await release("PROBADOR_DISPATCH_SECRET is not configured");
 
   try {
     // URLs de subida de los artefactos de salida.
@@ -91,14 +143,18 @@ async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<
     const output_uploads: SignedUpload[] = [];
     for (const o of outputs) {
       const { bucket, name } = splitPath(o.path);
-      const { data, error } = await admin.storage.from(bucket).createSignedUploadUrl(name, { upsert: true });
+      // Sin upsert: una sola subida por ruta. La URL caduca a las 2 h (límite fijo de Supabase).
+      const { data, error } = await admin.storage.from(bucket).createSignedUploadUrl(name);
       if (error || !data) throw new Error(`signed upload url: ${error?.message}`);
-      output_uploads.push({ name: o.name, path: o.path, upload_url: publicUrl(data.signedUrl) });
+      output_uploads.push({ ...o, upload_url: publicUrl(data.signedUrl) });
     }
+
+    // Rutas de entrada: las fotos de raw-uploads y, en el drapeado, las del contexto.
+    const drape = job.type === "drape" ? await drapeContext(admin, job) : null;
 
     // URLs de descarga de las entradas, indexadas por ruta.
     const input_urls: Record<string, string> = {};
-    for (const path of await inputPathsFor(admin, job)) {
+    for (const path of [...job.input_paths, ...(drape?.paths ?? [])]) {
       const { bucket, name } = splitPath(path);
       const { data, error } = await admin.storage.from(bucket).createSignedUrl(name, INPUT_URL_TTL_SECONDS);
       if (error || !data) throw new Error(`signed download url: ${error?.message}`);
@@ -113,26 +169,29 @@ async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<
     });
     if (pathsError) throw new Error(`set_job_output_paths: ${pathsError.message}`);
 
-    const dispatch: JobDispatch = {
+    // `input` viene de la base de datos (ya validado al crear el job); la unión
+    // discriminada se comprueba en ejecución contra el JSON Schema.
+    const dispatch = {
       job_id: job.id,
+      user_id: job.user_id,
       type: job.type,
-      input: job.input as unknown as JobDispatch["input"],
+      input: job.input,
+      ...(drape ? { context: drape.context } : {}),
       input_urls,
       output_uploads,
       callback_url: env.jobCallbackUrl(),
       attempt: job.attempt,
-    };
+      contracts_version: CONTRACTS_VERSION,
+    } as unknown as JobDispatch;
     const check = validate.jobDispatch(dispatch);
     if (!check.ok) throw new Error(`JobDispatch does not match contract: ${JSON.stringify(check.errors)}`);
 
-    const token = env.workerDispatchToken();
+    // Misma firma que el callback: timestamp + HMAC del cuerpo exacto que se envía.
+    const body = JSON.stringify(dispatch);
     const res = await fetch(workerUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(dispatch),
+      headers: { "Content-Type": "application/json", ...(await signedHeaders(secret, body)) },
+      body,
       signal: AbortSignal.timeout(15_000),
     });
     await res.body?.cancel();

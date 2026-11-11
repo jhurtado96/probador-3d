@@ -18,9 +18,9 @@ insert into public.consents (id, user_id, purpose, text_version) values
   ('c0000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan', 'v1'),
   ('c0000000-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-000000000002', 'body_scan', 'v1');
 
-insert into public.avatars (id, user_id, body_model, model_version, smplx, measurements, measurements_source,
+insert into public.avatars (id, user_id, body_model, model_version, shape, measurements, measurements_source,
                             glb_path, pose, shape_hash, confidence)
-select (a ->> 'id')::uuid, (a ->> 'user_id')::uuid, 'smplx', 'v', a -> 'smplx', a -> 'measurements', 'photo',
+select (a ->> 'id')::uuid, (a ->> 'user_id')::uuid, 'mhr', 'v', a -> 'shape', a -> 'measurements', 'photo',
        'assets/' || (a ->> 'user_id') || '/avatars/x.glb', 'a_pose', 'h', 0.9
   from (values (pg_temp.avatar_json('a1000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'x')),
                (pg_temp.avatar_json('a1000000-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-000000000002', 'x'))) v(a);
@@ -49,9 +49,9 @@ insert into public.garment_measurements (garment_id, size_label, zones, source) 
   ('90000000-0000-4000-8000-00000000000b', 'M', '{"chest": 104}', 'manual'),
   ('90000000-0000-4000-8000-0000000000cc', 'M', '{"chest": 104}', 'brand_size_chart');
 
-insert into public.fit_results (avatar_id, garment_id, size_label, zones, verdict, effective_fit, matches_design_fit,
-                                score, method, confidence)
-select av, g, 'M', '[{"zone":"chest","body_cm":96,"garment_cm":104,"ease_cm":8,"verdict":"ideal"}]',
+insert into public.fit_results (user_id, avatar_id, garment_id, size_label, zones, verdict, effective_fit,
+                                matches_design_fit, score, method, confidence)
+select (select user_id from public.avatars where id = av), av, g, 'M', '[{"zone":"chest","body_cm":96,"garment_cm":104,"ease_cm":8,"verdict":"ideal"}]',
        'fits', 'regular', true, 0.8, 'size_chart', 0.6
   from (values ('a1000000-0000-4000-8000-00000000000a'::uuid, '90000000-0000-4000-8000-00000000000a'::uuid),
                ('a1000000-0000-4000-8000-00000000000b'::uuid, '90000000-0000-4000-8000-00000000000b'::uuid)) v(av, g);
@@ -111,7 +111,7 @@ select set_eq($$ select id from public.garments $$,
               'garments: los propios y el catálogo, no los de B');
 select is((select count(*) from public.garment_measurements)::int, 2, 'garment_measurements: propias + catálogo');
 select is((select count(*) from public.garments_with_measurements)::int, 2, 'la vista respeta el RLS');
-select is((select count(*) from public.fit_results)::int, 1, 'fit_results: solo los de sus avatares');
+select is((select count(*) from public.fit_results)::int, 1, 'fit_results: solo los propios');
 select results_eq($$ select user_id from public.user_fit_preferences $$,
                   $$ values ('aaaaaaaa-0000-4000-8000-000000000001'::uuid) $$, 'user_fit_preferences: solo las propias');
 select results_eq($$ select user_id from public.outfits $$,
@@ -129,9 +129,9 @@ select set_eq($$ select name from storage.objects $$,
               'storage: sus assets y el catálogo; ni assets de B ni raw-uploads (ni las propias)');
 
 -- Escrituras prohibidas
-select throws_ok($$ insert into public.avatars (user_id, body_model, model_version, smplx, measurements,
+select throws_ok($$ insert into public.avatars (user_id, body_model, model_version, shape, measurements,
                     measurements_source, glb_path, pose, shape_hash, confidence)
-                    select user_id, body_model, model_version, smplx, measurements, measurements_source, glb_path,
+                    select user_id, body_model, model_version, shape, measurements, measurements_source, glb_path,
                            pose, shape_hash, confidence from public.avatars limit 1 $$,
                  '42501', null, 'la app no inserta avatares (los crea el pipeline)');
 select throws_ok($$ insert into public.jobs (user_id, type, input)

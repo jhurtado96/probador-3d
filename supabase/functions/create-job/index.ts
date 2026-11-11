@@ -12,16 +12,18 @@
 //   La app avisa de que terminó de subir las fotos; se despacha en el acto.
 //   (Si la app no avisa, pg_cron lo despacha en menos de un minuto.)
 //
-// Respuesta 201: { job: Job, uploads: [{ path, signed_url, token }] }
-// Errores: { error: { code, message, details? } }; `consent_missing` usa el
-// mismo código que JobErrorCode.
+// Respuesta 201: CreateJobResponse = { job: Job, uploads: UploadTicket[] }
+// Errores: ApiErrorBody = { error: { code, message, details? } }; `consent_missing`
+// y `quota_exceeded` usan el mismo código que JobErrorCode.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   type CreateJobRequest,
+  type CreateJobResponse,
   type DrapeJobInput,
   type GarmentJobInput,
   type Job,
+  type UploadTicket,
   validate,
 } from "../_shared/contracts.ts";
 import { dispatchQueued } from "../_shared/dispatch.ts";
@@ -32,12 +34,6 @@ import { isOwnRawUploadPath, RAW_BUCKET, splitPath } from "../_shared/storage.ts
 import { adminClient, requireUser } from "../_shared/supabase.ts";
 
 const CONSENT_PURPOSE = { avatar: "body_scan", color: "color_analysis" } as const;
-
-interface UploadTicket {
-  path: string;
-  signed_url: string;
-  token: string;
-}
 
 function inputPaths(req: CreateJobRequest): string[] {
   switch (req.type) {
@@ -102,7 +98,9 @@ async function assertGarmentOwned(admin: SupabaseClient, userId: string, input: 
 async function drapeCacheKey(admin: SupabaseClient, userId: string, input: DrapeJobInput): Promise<string> {
   const [{ data: avatar, error: e1 }, { data: garment, error: e2 }] = await Promise.all([
     admin.from("avatars").select("id, user_id, shape_hash").eq("id", input.avatar_id).maybeSingle(),
-    admin.from("garments").select("id, user_id, status, glb_path, updated_at").eq("id", input.garment_id)
+    admin.from("garments")
+      .select("id, user_id, status, glb_path, sewing_pattern_path, attributes, updated_at")
+      .eq("id", input.garment_id)
       .maybeSingle(),
   ]);
   if (e1) throw e1;
@@ -111,10 +109,10 @@ async function drapeCacheKey(admin: SupabaseClient, userId: string, input: Drape
   if (!garment || (garment.user_id !== null && garment.user_id !== userId)) {
     throw new HttpError(404, "not_found", "garment not found");
   }
-  if (garment.status !== "ready" || !garment.glb_path) {
+  if (garment.status !== "ready" || !(garment.sewing_pattern_path || garment.glb_path)) {
     throw new HttpError(409, "conflict", "garment is not ready");
   }
-  // hash(shape_hash, prenda y su versión, talla, pose, calidad, versión del simulador)
+  // hash(shape_hash, prenda y su versión, talla, pose, calidad, tejido, versión del simulador)
   const material = [
     avatar.shape_hash,
     garment.id,
@@ -122,6 +120,7 @@ async function drapeCacheKey(admin: SupabaseClient, userId: string, input: Drape
     input.size_label,
     input.pose,
     input.quality,
+    (garment.attributes as { fabric?: string } | null)?.fabric ?? "",
     env.drapeSimulatorVersion(),
   ].join("|");
   return `sha256:${await sha256Hex(material)}`;
@@ -219,7 +218,7 @@ async function createJob(req: Request): Promise<Response> {
   if (body.type === "drape") {
     cacheKey = await drapeCacheKey(admin, user.id, body.input);
     const cached = await tryDrapeCacheHit(admin, user.id, body, cacheKey);
-    if (cached) return json({ job: cached, uploads: [] }, 201);
+    if (cached) return json({ job: cached, uploads: [] } satisfies CreateJobResponse, 201);
   }
 
   const { data: job, error } = await admin
@@ -241,7 +240,7 @@ async function createJob(req: Request): Promise<Response> {
   if (uploads.length === 0) await dispatchQueued(admin, { jobId: job.id });
 
   const { data: fresh } = await admin.from("jobs").select("*").eq("id", job.id).single();
-  return json({ job: (fresh ?? job) as Job, uploads }, 201);
+  return json({ job: (fresh ?? job) as Job, uploads } satisfies CreateJobResponse, 201);
 }
 
 async function markUploaded(req: Request): Promise<Response> {

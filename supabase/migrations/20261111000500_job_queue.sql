@@ -149,6 +149,7 @@ $$;
 -- Lanza P0002 si el job no existe y 22023 si la salida no es coherente con el job.
 -- La Edge Function ya validó p_output / p_error contra el JSON Schema del contrato
 -- y ya borró las fotos de entrada (p_input_deleted_at) si el estado es terminal.
+-- jobs.input_deleted_at lo fija solo la API con ese valor: el worker no lo envía.
 create or replace function public.complete_job(
   p_job_id           uuid,
   p_attempt          integer,
@@ -158,7 +159,8 @@ create or replace function public.complete_job(
   p_output           jsonb default null,
   p_error            jsonb default null,
   p_worker_version   text default null,
-  p_input_deleted_at timestamptz default null
+  p_input_deleted_at timestamptz default null,
+  p_fake             boolean default false
 )
 returns jsonb
 language plpgsql
@@ -176,6 +178,7 @@ declare
   frid     uuid;
   v_shape  text;
   v_output jsonb;
+  emb      jsonb;
 begin
   select * into j from public.jobs where id = p_job_id for update;
   if not found then
@@ -197,7 +200,8 @@ begin
            started_at = coalesce(started_at, now()),
            progress = coalesce(p_progress, progress),
            stage = coalesce(p_stage, stage),
-           worker_version = coalesce(p_worker_version, worker_version)
+           worker_version = coalesce(p_worker_version, worker_version),
+           fake = coalesce(p_fake, false)
      where id = p_job_id;
     return jsonb_build_object('result', 'applied', 'type', j.type, 'status', 'running');
   end if;
@@ -206,9 +210,10 @@ begin
   if p_status = 'failed' then
     update public.jobs
        set status = 'failed', error = p_error, output = null, finished_at = now(),
-           worker_version = coalesce(p_worker_version, worker_version)
+           worker_version = coalesce(p_worker_version, worker_version),
+           fake = coalesce(p_fake, false),
+           input_deleted_at = p_input_deleted_at
      where id = p_job_id;
-    update public.job_runs set input_deleted_at = p_input_deleted_at where job_id = p_job_id;
     if j.type = 'garment' then
       update public.garments set status = 'failed'
        where id = (j.input ->> 'garment_id')::uuid and status = 'processing';
@@ -232,16 +237,16 @@ begin
       raise exception 'avatar.user_id does not match job owner' using errcode = '22023';
     end if;
     insert into public.avatars (
-      id, user_id, body_model, model_version, smplx, measurements, measurements_source,
-      measurements_override, glb_path, pose, shape_hash, confidence)
+      id, user_id, body_model, model_version, shape, measurements, measurements_source,
+      measurements_sigma_cm, measurements_override, glb_path, pose, shape_hash, confidence)
     values (
       (v ->> 'id')::uuid, j.user_id, (v ->> 'body_model')::public.body_model, v ->> 'model_version',
-      v -> 'smplx', v -> 'measurements', (v ->> 'measurements_source')::public.measurement_source,
+      v -> 'shape', v -> 'measurements', (v ->> 'measurements_source')::public.measurement_source,
+      private.jsonb_nullif(v -> 'measurements_sigma_cm'),
       private.jsonb_nullif(v -> 'measurements_override'),
       private.storage_ref_to_path(v ->> 'glb_url', r.output_paths),
       (v ->> 'pose')::public.avatar_pose, v ->> 'shape_hash', (v ->> 'confidence')::numeric)
     on conflict (id) do nothing;
-    v_output := jsonb_set(v_output, '{input_deleted_at}', to_jsonb(p_input_deleted_at));
 
   -- Éxito: colorimetría ---------------------------------------------------------------
   elsif j.type = 'color' then
@@ -252,7 +257,7 @@ begin
     insert into public.color_profiles (
       id, user_id, season, undertone, value, intensity, contrast, scores, skin_lab, hair_lab,
       eye_lab, palettes, metal, confidence, alternatives, white_balanced, user_overridden,
-      pipeline_version)
+      pipeline_version, hair_dyed, ita, skin_hue_deg, quality)
     values (
       (v ->> 'id')::uuid, j.user_id, (v ->> 'season')::public.color_season,
       (v ->> 'undertone')::public.undertone, (v ->> 'value')::public.color_value,
@@ -260,9 +265,10 @@ begin
       v -> 'scores', v -> 'skin_lab', private.jsonb_nullif(v -> 'hair_lab'),
       private.jsonb_nullif(v -> 'eye_lab'), v -> 'palettes', (v ->> 'metal')::public.metal,
       (v ->> 'confidence')::numeric, private.jsonb_nullif(v -> 'alternatives'),
-      (v ->> 'white_balanced')::boolean, false, v ->> 'pipeline_version')
+      (v ->> 'white_balanced')::boolean, false, v ->> 'pipeline_version',
+      (v ->> 'hair_dyed')::boolean, (v ->> 'ita')::numeric, (v ->> 'skin_hue_deg')::numeric,
+      private.jsonb_nullif(v -> 'quality'))
     on conflict (id) do nothing;
-    v_output := jsonb_set(v_output, '{input_deleted_at}', to_jsonb(p_input_deleted_at));
 
   -- Éxito: prenda (respeta user_corrected_fields) ------------------------------------
   elsif j.type = 'garment' then
@@ -271,6 +277,13 @@ begin
     if (v ->> 'id')::uuid is distinct from gid then
       raise exception 'garment.id does not match job input' using errcode = '22023';
     end if;
+    if (v ->> 'user_id')::uuid is distinct from j.user_id then
+      raise exception 'garment.user_id does not match job owner' using errcode = '22023';
+    end if;
+    -- El embedding no forma parte de Garment ni se guarda en jobs.output (512
+    -- números que la app no necesita): va solo a garments.embedding.
+    emb := private.jsonb_nullif(p_output -> 'embedding');
+    v_output := v_output - 'embedding';
     select * into g from public.garments where id = gid for update;
     if found then
       if g.user_id is distinct from j.user_id then
@@ -287,11 +300,18 @@ begin
         colors           = case when 'colors' = any (c) then g.colors else v -> 'colors' end,
         design_fit       = case when 'design_fit' = any (c) and g.design_fit is not null then g.design_fit
                                 else (v ->> 'design_fit')::public.design_fit end,
+        design_fit_confidence = case when 'design_fit' = any (c) and g.design_fit is not null then null
+                                else (v ->> 'design_fit_confidence')::numeric end,
         size_label       = case when 'size_label' = any (c) then g.size_label else v ->> 'size_label' end,
         level            = (v ->> 'level')::smallint,
         template_id      = v ->> 'template_id',
         image_path       = private.storage_ref_to_path(v ->> 'image_url', r.output_paths),
         glb_path         = private.storage_ref_to_path(v ->> 'glb_url', r.output_paths),
+        sewing_pattern_path   = private.storage_ref_to_path(v ->> 'sewing_pattern_url', r.output_paths),
+        sewing_pattern_format = (v ->> 'sewing_pattern_format')::public.sewing_pattern_format,
+        embedding        = case when emb is null then g.embedding
+                                else (emb -> 'vector')::text::extensions.vector(512) end,
+        embedding_model  = case when emb is null then g.embedding_model else emb ->> 'model' end,
         pipeline_version = v ->> 'pipeline_version'
       where id = gid;
 
@@ -303,7 +323,6 @@ begin
           set zones = excluded.zones, source = excluded.source;
       end if;
     end if;  -- si el usuario borró la prenda mientras tanto, solo se cierra el job
-    v_output := jsonb_set(v_output, '{input_deleted_at}', to_jsonb(p_input_deleted_at));
 
   -- Éxito: drapeado -------------------------------------------------------------------
   elsif j.type = 'drape' then
@@ -320,13 +339,17 @@ begin
            or fr ->> 'garment_id' is distinct from j.input ->> 'garment_id' then
           raise exception 'fit_result does not match job input' using errcode = '22023';
         end if;
+        if (fr ->> 'user_id')::uuid is distinct from j.user_id then
+          raise exception 'fit_result.user_id does not match job owner' using errcode = '22023';
+        end if;
         insert into public.fit_results (
-          id, avatar_id, garment_id, size_label, zones, verdict, effective_fit,
-          matches_design_fit, score, recommended_size_label, method, confidence)
+          id, user_id, avatar_id, garment_id, size_label, zones, verdict, effective_fit,
+          matches_design_fit, size_offset, score, recommended_size_label, method, confidence)
         values (
-          (fr ->> 'id')::uuid, (fr ->> 'avatar_id')::uuid, (fr ->> 'garment_id')::uuid,
+          (fr ->> 'id')::uuid, j.user_id, (fr ->> 'avatar_id')::uuid, (fr ->> 'garment_id')::uuid,
           fr ->> 'size_label', fr -> 'zones', (fr ->> 'verdict')::public.fit_verdict,
           (fr ->> 'effective_fit')::public.design_fit, (fr ->> 'matches_design_fit')::boolean,
+          (fr ->> 'size_offset')::numeric,
           (fr ->> 'score')::numeric, fr ->> 'recommended_size_label',
           (fr ->> 'method')::public.fit_method, (fr ->> 'confidence')::numeric)
         on conflict (id) do nothing;
@@ -352,9 +375,10 @@ begin
   update public.jobs
      set status = 'succeeded', progress = 1, output = v_output, error = null,
          started_at = coalesce(started_at, now()), finished_at = now(),
-         worker_version = coalesce(p_worker_version, worker_version)
+         worker_version = coalesce(p_worker_version, worker_version),
+         fake = coalesce(p_fake, false),
+         input_deleted_at = p_input_deleted_at
    where id = p_job_id;
-  update public.job_runs set input_deleted_at = p_input_deleted_at where job_id = p_job_id;
 
   return jsonb_build_object('result', 'applied', 'type', j.type, 'status', 'succeeded');
 end;
@@ -455,7 +479,7 @@ as $$
   select r.job_id, r.input_paths
     from public.job_runs r join public.jobs j on j.id = r.job_id
    where j.status in ('succeeded', 'failed', 'canceled')
-     and r.input_deleted_at is null
+     and j.input_deleted_at is null
      and cardinality(r.input_paths) > 0
    order by j.finished_at
    limit p_limit;
@@ -470,8 +494,8 @@ as $$
 declare
   n integer;
 begin
-  update public.job_runs set input_deleted_at = p_at
-   where job_id = any (p_job_ids) and input_deleted_at is null;
+  update public.jobs set input_deleted_at = p_at
+   where id = any (p_job_ids) and input_deleted_at is null;
   get diagnostics n = row_count;
   return n;
 end;
@@ -513,7 +537,8 @@ as $$
      and (storage.foldername(o.name))[1] <> 'catalog'
      and not exists (select 1 from public.avatars a where a.glb_path = 'assets/' || o.name)
      and not exists (select 1 from public.garments g
-                      where g.glb_path = 'assets/' || o.name or g.image_path = 'assets/' || o.name)
+                      where g.glb_path = 'assets/' || o.name or g.image_path = 'assets/' || o.name
+                         or g.sewing_pattern_path = 'assets/' || o.name)
      and not exists (select 1 from public.drape_cache d where d.glb_path = 'assets/' || o.name)
      and not exists (select 1 from public.outfits f where f.preview_path = 'assets/' || o.name)
      and not exists (select 1 from public.job_runs r join public.jobs j on j.id = r.job_id
@@ -606,7 +631,7 @@ begin
     'public.claim_jobs_for_dispatch(uuid, integer)',
     'public.set_job_output_paths(uuid, integer, text[])',
     'public.release_job_dispatch(uuid, integer, text)',
-    'public.complete_job(uuid, integer, text, numeric, text, jsonb, jsonb, text, timestamptz)',
+    'public.complete_job(uuid, integer, text, numeric, text, jsonb, jsonb, text, timestamptz, boolean)',
     'public.reap_stale_jobs()',
     'public.jobs_with_pending_input_deletion(integer)',
     'public.mark_job_inputs_deleted(uuid[], timestamptz)',

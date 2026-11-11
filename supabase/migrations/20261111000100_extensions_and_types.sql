@@ -2,8 +2,10 @@
 -- Probador virtual 3D · 0001 · Extensiones, esquemas y tipos enumerados
 --
 -- Los valores de cada enum son exactamente las constantes de
--- packages/contracts/src/index.ts (v0.1.0). Si el contrato añade un valor, se
--- añade aquí con `alter type ... add value` en una migración nueva.
+-- packages/contracts/src/index.ts (v0.2.0). Estas migraciones aún no se han
+-- aplicado a ningún proyecto en la nube, por eso se editan en su sitio; una vez
+-- desplegadas, cada valor nuevo del contrato se añade con
+-- `alter type ... add value` en una migración nueva.
 -- =============================================================================
 
 -- Extensiones -----------------------------------------------------------------
@@ -20,9 +22,10 @@ revoke all on schema private from public, anon, authenticated;
 grant usage on schema private to service_role;
 
 -- Enums del contrato -------------------------------------------------------------
-create type public.body_model as enum ('smplx', 'anny');
-create type public.body_model_gender as enum ('neutral', 'female', 'male');
-create type public.measurement_source as enum ('photo', 'photo_reference_object', 'lidar', 'manual');
+-- El resto del esquema no depende de la topología del modelo corporal: solo
+-- guarda su nombre, su versión y un vector de forma opaco (avatars.shape).
+create type public.body_model as enum ('mhr', 'anny', 'smplx');
+create type public.measurement_source as enum ('photo', 'photo_reference_object', 'lidar', 'manual', 'unmeasured');
 create type public.avatar_pose as enum ('a_pose', 't_pose', 'relaxed');
 
 create type public.color_season as enum (
@@ -46,6 +49,7 @@ create type public.garment_measurement_source as enum (
   'brand_size_chart', 'photo_reference_object', 'lidar', 'manual', 'estimated'
 );
 create type public.garment_status as enum ('processing', 'ready', 'failed');
+create type public.sewing_pattern_format as enum ('garmentcode');
 
 create type public.fit_verdict as enum ('too_small', 'fits', 'too_large');
 create type public.fit_method as enum ('size_chart', 'measured', 'simulated');
@@ -59,8 +63,7 @@ create type public.job_type as enum ('avatar', 'garment', 'drape', 'color');
 create type public.job_status as enum ('queued', 'running', 'succeeded', 'failed', 'canceled');
 create type public.drape_quality as enum ('preview', 'final');
 
--- Fuera del contrato (no hay tipo Consent en packages/contracts v0.1.0): los
--- cuatro tratamientos de docs/architecture.md §4.
+-- Contrato: ConsentPurpose. Los cuatro tratamientos de docs/architecture.md §4.
 create type public.consent_purpose as enum ('body_scan', 'color_analysis', 'personalization', 'analytics');
 
 -- Utilidades comunes --------------------------------------------------------------

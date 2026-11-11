@@ -15,7 +15,11 @@ import jobDispatchSchema from "@probador/contracts/schemas/job_dispatch.schema.j
 };
 
 export type {
+  ApiErrorBody,
+  ApiErrorCode,
   CreateJobRequest,
+  CreateJobResponse,
+  DrapeJobContext,
   DrapeJobInput,
   GarmentJobInput,
   Job,
@@ -24,6 +28,7 @@ export type {
   JobError,
   JobType,
   SignedUpload,
+  UploadTicket,
 } from "@probador/contracts";
 export { CONTRACTS_VERSION, JOB_TYPES } from "@probador/contracts";
 

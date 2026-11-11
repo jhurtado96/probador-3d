@@ -43,8 +43,8 @@ $$;
 create or replace function pg_temp.avatar_json(p_id uuid, p_user uuid, p_glb text)
 returns jsonb language sql as $$
   select jsonb_build_object(
-    'id', p_id, 'user_id', p_user, 'body_model', 'smplx', 'model_version', 'smplx-1.1/avatar-0.1',
-    'smplx', jsonb_build_object('gender', 'neutral', 'betas', '[0,0,0,0,0,0,0,0,0,0]'::jsonb),
+    'id', p_id, 'user_id', p_user, 'body_model', 'mhr', 'model_version', 'mhr-1.0/avatar-0.1',
+    'shape', jsonb_build_object('params', '[0,0,0,0,0,0,0,0,0,0]'::jsonb),
     'measurements', jsonb_build_object('height_cm', 172, 'chest_cm', 96, 'waist_cm', 80, 'hip_cm', 98,
                                        'shoulder_width_cm', 44, 'arm_length_cm', 60, 'inseam_cm', 80),
     'measurements_source', 'photo', 'glb_url', p_glb, 'pose', 'a_pose', 'shape_hash', 'shape-' || p_user,

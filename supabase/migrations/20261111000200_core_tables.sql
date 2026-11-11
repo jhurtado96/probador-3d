@@ -9,7 +9,8 @@
 --     Postgres guarda la RUTA (`<bucket>/<carpeta>/<fichero>`) en una columna
 --     `*_path`; la app o la API la firman al servir (docs/architecture.md §3.3).
 --     Afecta a avatars.glb_path, garments.image_path, garments.glb_path,
---     outfits.preview_path y drape_cache.glb_path.
+--     garments.sewing_pattern_path, outfits.preview_path y drape_cache.glb_path
+--     (la tabla completa es STORAGE_URL_COLUMNS en el contrato).
 --   * Garment.measurements vive en la tabla garment_measurements; la vista
 --     public.garments_with_measurements la vuelve a juntar.
 --
@@ -80,15 +81,18 @@ create table public.avatars (
   user_id               uuid not null references public.profiles (id) on delete cascade,
   body_model            public.body_model not null,
   model_version         text not null,
-  smplx                 jsonb not null check (
-                          jsonb_typeof(smplx) = 'object'
-                          and jsonb_typeof(smplx -> 'betas') = 'array'
-                          and jsonb_array_length(smplx -> 'betas') between 10 and 300),
+  -- Forma en el espacio de parámetros de body_model (contrato: BodyShape). Opaca
+  -- para todo salvo el pipeline de avatar.
+  shape                 jsonb not null check (
+                          jsonb_typeof(shape) = 'object'
+                          and jsonb_typeof(shape -> 'params') = 'array'
+                          and jsonb_array_length(shape -> 'params') between 1 and 512),
   measurements          jsonb not null check (
                           jsonb_typeof(measurements) = 'object'
                           and measurements ?& array['height_cm', 'chest_cm', 'waist_cm', 'hip_cm',
                                                     'shoulder_width_cm', 'arm_length_cm', 'inseam_cm']),
   measurements_source   public.measurement_source not null,
+  measurements_sigma_cm jsonb check (measurements_sigma_cm is null or jsonb_typeof(measurements_sigma_cm) = 'object'),
   measurements_override jsonb check (measurements_override is null or jsonb_typeof(measurements_override) = 'object'),
   -- Contrato: glb_url (URL firmada). Aquí: ruta `assets/<user_id>/avatars/<fichero>.glb`.
   glb_path              text not null check (glb_path like 'assets/%'),
@@ -116,7 +120,10 @@ create table public.color_profiles (
   scores           jsonb not null check (scores ?& array['undertone', 'value', 'intensity', 'contrast']),
   skin_lab         jsonb not null check (skin_lab ?& array['l', 'a', 'b']),
   hair_lab         jsonb check (hair_lab is null or hair_lab ?& array['l', 'a', 'b']),
+  hair_dyed        boolean,
   eye_lab          jsonb check (eye_lab is null or eye_lab ?& array['l', 'a', 'b']),
+  ita              numeric,
+  skin_hue_deg     numeric check (skin_hue_deg is null or skin_hue_deg between 0 and 360),
   palettes         jsonb not null check (
                      palettes ?& array['best', 'neutrals', 'accents', 'avoid']
                      and jsonb_array_length(palettes -> 'best') >= 1),
@@ -124,11 +131,15 @@ create table public.color_profiles (
   confidence       numeric not null check (confidence between 0 and 1),
   alternatives     jsonb check (alternatives is null or jsonb_typeof(alternatives) = 'array'),
   white_balanced   boolean not null,
+  quality          jsonb check (quality is null or quality ?& array['flags', 'capture_score']),
   user_overridden  boolean not null default false,
   pipeline_version text not null,
-  created_at       timestamptz not null default now()
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
 create index color_profiles_user_created_idx on public.color_profiles (user_id, created_at desc);
+create trigger color_profiles_set_updated_at before update on public.color_profiles
+  for each row execute function private.set_updated_at();
 
 -- -----------------------------------------------------------------------------
 -- store_products (contrato: StoreProduct). Catálogo público de afiliación.
@@ -174,24 +185,30 @@ create table public.garments (
   user_id               uuid default auth.uid() references public.profiles (id) on delete cascade,
   store_product_id      uuid references public.store_products (id) on delete set null,
   status                public.garment_status not null default 'processing',
-  -- category, design_fit e image_path pueden faltar solo mientras status = processing
-  -- (la prenda se crea antes de que el worker la etiquete; ver discrepancias en README).
+  -- category, design_fit e image_path pueden faltar mientras status <> ready
+  -- (contrato: PendingGarment; la prenda se crea antes de que el worker la etiquete).
   category              public.garment_category,
   name                  text,
   brand                 text,
   attributes            jsonb not null default '{}' check (jsonb_typeof(attributes) = 'object'),
   colors                jsonb not null default '[]' check (jsonb_typeof(colors) = 'array'),
   design_fit            public.design_fit,
+  design_fit_confidence numeric check (design_fit_confidence is null or design_fit_confidence between 0 and 1),
   size_label            text,
   level                 smallint not null default 1 check (level in (1, 2, 3)),
   template_id           text,
-  -- Contrato: image_url / glb_url. Aquí rutas `assets/...`.
+  -- Contrato: image_url / glb_url / sewing_pattern_url. Aquí rutas `assets/...`.
   image_path            text check (image_path like 'assets/%'),
   glb_path              text check (glb_path like 'assets/%'),
+  -- Patrón de costura (especificación de GarmentCode, JSON) del que sale el GLB
+  -- y que el drapeado simula. Null en prendas de nivel 3 (3D nativo de marca).
+  sewing_pattern_path   text check (sewing_pattern_path like 'assets/%'),
+  sewing_pattern_format public.sewing_pattern_format,
   user_corrected_fields text[] not null default '{}',
   pipeline_version      text not null default 'pending',
   -- Embedding de imagen para recomendaciones (pgvector, coseno). 512 dimensiones
-  -- = CLIP ViT-B/32 / FashionCLIP. El contrato aún no lo transporta.
+  -- = CLIP ViT-B/32 / FashionCLIP. Llega en GarmentJobOutput.embedding; no se
+  -- sirve a la app (no está en la vista ni en Garment).
   embedding             extensions.vector(512),
   embedding_model       text,
   created_at            timestamptz not null default now(),
@@ -229,10 +246,12 @@ create table public.garment_measurements (
 );
 
 -- -----------------------------------------------------------------------------
--- fit_results (contrato: FitResult). No lleva user_id: el dueño es el del avatar.
+-- fit_results (contrato: FitResult). user_id = dueño del avatar (lo comprueba
+-- complete_job); está desnormalizado para que RLS no tenga que pasar por avatars.
 -- -----------------------------------------------------------------------------
 create table public.fit_results (
   id                     uuid primary key default gen_random_uuid(),
+  user_id                uuid not null references public.profiles (id) on delete cascade,
   avatar_id              uuid not null references public.avatars (id) on delete cascade,
   garment_id             uuid not null references public.garments (id) on delete cascade,
   size_label             text not null,
@@ -240,6 +259,7 @@ create table public.fit_results (
   verdict                public.fit_verdict not null,
   effective_fit          public.design_fit not null,
   matches_design_fit     boolean not null,
+  size_offset            numeric,
   score                  numeric not null check (score between 0 and 1),
   recommended_size_label text,
   method                 public.fit_method not null,
@@ -248,9 +268,10 @@ create table public.fit_results (
 );
 create index fit_results_lookup_idx on public.fit_results (avatar_id, garment_id, size_label, created_at desc);
 create index fit_results_garment_idx on public.fit_results (garment_id);
+create index fit_results_user_idx on public.fit_results (user_id);
 
 -- -----------------------------------------------------------------------------
--- user_fit_preferences: fit preferido del usuario (sin tipo en el contrato v0.1.0)
+-- user_fit_preferences (contrato: UserFitPreferences)
 -- -----------------------------------------------------------------------------
 create table public.user_fit_preferences (
   user_id          uuid primary key default auth.uid() references public.profiles (id) on delete cascade,
@@ -258,8 +279,11 @@ create table public.user_fit_preferences (
   default_fit      public.design_fit not null default 'regular',
   -- Por categoría: {"jeans": "slim", "hoodie": "oversize"}.
   fit_by_category  jsonb not null default '{}' check (jsonb_typeof(fit_by_category) = 'object'),
-  -- Holgura preferida por zona en cm: {"chest": {"min_cm": 6, "max_cm": 12}}.
-  ease_by_zone     jsonb not null default '{}' check (jsonb_typeof(ease_by_zone) = 'object'),
+  -- Holgura preferida por categoría y zona (docs/research/fit.md §6):
+  -- {"shirt": {"chest": {"preferred_cm": 12, "tolerance_cm": 4, "observations": 3}}}.
+  ease_by_category jsonb not null default '{}' check (jsonb_typeof(ease_by_category) = 'object'),
+  -- Gusto por siluetas oversize de diseño, aparte de la talla. Null = sin dato.
+  likes_oversize   boolean,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
@@ -292,8 +316,8 @@ create trigger outfits_set_updated_at before update on public.outfits
   for each row execute function private.set_updated_at();
 
 -- -----------------------------------------------------------------------------
--- drape_cache: un GLB drapeado por combinación (sin tipo en el contrato v0.1.0)
--- cache_key = sha256(shape_hash|garment_id|versión de prenda|talla|pose|calidad|simulador)
+-- drape_cache (contrato: DrapeCache): un GLB drapeado por combinación
+-- cache_key = sha256(shape_hash|garment_id|versión de prenda|talla|pose|calidad|tejido|simulador)
 -- -----------------------------------------------------------------------------
 create table public.drape_cache (
   id                uuid primary key default gen_random_uuid(),
@@ -333,6 +357,11 @@ create table public.jobs (
   error          jsonb check (error is null or error ?& array['code', 'message', 'retryable']),
   attempts       integer not null default 0 check (attempts >= 0),
   worker_version text,
+  -- El resultado lo generó un worker en modo fake (JobCallback.fake).
+  fake           boolean not null default false,
+  -- Cuándo borró la API las fotos de entrada de raw-uploads. Solo lo escribe la
+  -- API (complete_job / mark_job_inputs_deleted), nunca el worker.
+  input_deleted_at timestamptz,
   created_at     timestamptz not null default now(),
   started_at     timestamptz,
   finished_at    timestamptz,
@@ -357,7 +386,6 @@ create table public.job_runs (
   dispatched_at       timestamptz,
   deadline_at         timestamptz,
   last_dispatch_error text,
-  input_deleted_at    timestamptz,
   updated_at          timestamptz not null default now()
 );
 create index job_runs_undispatched_idx on public.job_runs (job_id) where dispatched_at is null;
@@ -382,12 +410,13 @@ with (security_invoker = true)
 as
 select
   g.id, g.user_id, g.store_product_id, g.status, g.category, g.name, g.brand,
-  g.attributes, g.colors, g.design_fit, g.size_label,
+  g.attributes, g.colors, g.design_fit, g.design_fit_confidence, g.size_label,
   coalesce(
     (select jsonb_agg(jsonb_build_object('size_label', m.size_label, 'zones', m.zones, 'source', m.source)
                       order by m.size_label)
        from public.garment_measurements m where m.garment_id = g.id),
     '[]'::jsonb) as measurements,
-  g.level, g.template_id, g.image_path, g.glb_path, g.user_corrected_fields,
+  g.level, g.template_id, g.image_path, g.glb_path, g.sewing_pattern_path, g.sewing_pattern_format,
+  g.user_corrected_fields,
   g.pipeline_version, g.created_at, g.updated_at
 from public.garments g;

@@ -1,9 +1,21 @@
-// Firma HMAC-SHA256 de los callbacks del worker (cabecera x-probador-signature).
+// Firma HMAC-SHA256 entre la API y los workers (packages/contracts, «Firma de
+// peticiones entre API y workers»). Vale igual para el despacho que sale
+// (PROBADOR_DISPATCH_SECRET) y para el callback que entra (PROBADOR_CALLBACK_SECRET):
 //
-// Formato aceptado: `sha256=<hex>` o `<hex>` a secas, calculado sobre el cuerpo
-// HTTP exacto (bytes UTF-8) con JOB_CALLBACK_SECRET.
+//   x-probador-timestamp: <segundos Unix>
+//   x-probador-signature: sha256=<hex(HMAC-SHA256(secreto, "<timestamp>." + cuerpo exacto))>
+//
+// Se rechaza si falta una cabecera, si la firma no coincide o si el timestamp
+// se aleja más de SIGNATURE_TOLERANCE_SECONDS del reloj (protección contra reenvíos).
 
-export const SIGNATURE_HEADER = "x-probador-signature";
+import {
+  SIGNATURE_HEADER,
+  SIGNATURE_PREFIX,
+  SIGNATURE_TIMESTAMP_HEADER,
+  SIGNATURE_TOLERANCE_SECONDS,
+} from "@probador/contracts";
+
+export { SIGNATURE_HEADER, SIGNATURE_TIMESTAMP_HEADER };
 
 const encoder = new TextEncoder();
 
@@ -28,22 +40,51 @@ function fromHex(hex: string): Uint8Array<ArrayBuffer> | null {
   return out;
 }
 
-export async function signBody(secret: string, body: string): Promise<string> {
-  const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), encoder.encode(body));
-  return `sha256=${toHex(sig)}`;
+export async function signBody(secret: string, body: string, timestamp: string | number): Promise<string> {
+  const sig = await crypto.subtle.sign("HMAC", await hmacKey(secret), encoder.encode(`${timestamp}.${body}`));
+  return `${SIGNATURE_PREFIX}${toHex(sig)}`;
 }
 
-/** Verificación en tiempo constante (crypto.subtle.verify). */
+/** Cabeceras de una petición firmada ahora. */
+export async function signedHeaders(
+  secret: string,
+  body: string,
+  nowMs: number = Date.now(),
+): Promise<Record<string, string>> {
+  const timestamp = String(Math.floor(nowMs / 1000));
+  return {
+    [SIGNATURE_TIMESTAMP_HEADER]: timestamp,
+    [SIGNATURE_HEADER]: await signBody(secret, body, timestamp),
+  };
+}
+
+/** Verificación en tiempo constante (crypto.subtle.verify) de la firma y de la frescura del timestamp. */
 export async function verifySignature(
   secret: string,
   body: string,
-  header: string | null,
+  signature: string | null,
+  timestamp: string | null,
+  nowMs: number = Date.now(),
 ): Promise<boolean> {
-  if (!header) return false;
-  const hex = header.startsWith("sha256=") ? header.slice("sha256=".length) : header;
-  const expected = fromHex(hex.trim());
+  if (!secret || !signature || !timestamp) return false;
+  const ts = timestamp.trim();
+  if (!/^[0-9]{1,12}$/.test(ts)) return false;
+  if (Math.abs(nowMs / 1000 - Number(ts)) > SIGNATURE_TOLERANCE_SECONDS) return false;
+  const sig = signature.trim();
+  if (!sig.startsWith(SIGNATURE_PREFIX)) return false;
+  const expected = fromHex(sig.slice(SIGNATURE_PREFIX.length));
   if (!expected) return false;
-  return await crypto.subtle.verify("HMAC", await hmacKey(secret), expected, encoder.encode(body));
+  return await crypto.subtle.verify("HMAC", await hmacKey(secret), expected, encoder.encode(`${ts}.${body}`));
+}
+
+export async function verifyRequest(secret: string, body: string, headers: Headers, nowMs?: number): Promise<boolean> {
+  return await verifySignature(
+    secret,
+    body,
+    headers.get(SIGNATURE_HEADER),
+    headers.get(SIGNATURE_TIMESTAMP_HEADER),
+    nowMs,
+  );
 }
 
 /** Comparación de secretos compartidos en tiempo constante. */

@@ -25,7 +25,8 @@ values
   ('raw-uploads', 'raw-uploads', false, 10 * 1024 * 1024,
    array['image/jpeg', 'image/png', 'image/webp']),
   ('assets', 'assets', false, 50 * 1024 * 1024,
-   array['model/gltf-binary', 'application/octet-stream', 'image/png', 'image/jpeg', 'image/webp'])
+   -- application/json: patrón de costura (GarmentCode) de cada prenda.
+   array['model/gltf-binary', 'application/octet-stream', 'application/json', 'image/png', 'image/jpeg', 'image/webp'])
 on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit,

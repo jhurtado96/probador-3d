@@ -16,15 +16,21 @@ export const env = {
   supabaseUrl: () => requireEnv("SUPABASE_URL"),
   serviceRoleKey: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
 
-  /** Secreto HMAC compartido con los workers para firmar los callbacks. */
-  jobCallbackSecret: () => requireEnv("JOB_CALLBACK_SECRET"),
+  /** Secreto HMAC con el que los workers firman los callbacks (mismo nombre en el worker). */
+  callbackSecret: () => requireEnv("PROBADOR_CALLBACK_SECRET"),
+  /** Secreto HMAC con el que la API firma el despacho al worker (mismo nombre en el worker). */
+  dispatchSecret: () => optionalEnv("PROBADOR_DISPATCH_SECRET"),
+  /**
+   * Acepta callbacks de workers en modo fake (JobCallback.fake). Solo para
+   * desarrollo e integración: sin esta variable se rechazan.
+   */
+  allowFakeWorkers: () => optionalEnv("PROBADOR_ALLOW_FAKE_WORKERS") === "1",
   /** URL pública de job-callback que se envía al worker (por defecto, la del proyecto). */
   jobCallbackUrl: () => optionalEnv("JOB_CALLBACK_URL") ?? `${requireEnv("SUPABASE_URL")}/functions/v1/job-callback`,
 
   /** Endpoint web de Modal (región UE) que recibe JobDispatch. Sin él no se despacha. */
   workerDispatchUrl: () => optionalEnv("WORKER_DISPATCH_URL"),
-  /** Token Bearer que el endpoint del worker exige. */
-  workerDispatchToken: () => optionalEnv("WORKER_DISPATCH_TOKEN"),
+
 
   /** Secreto con el que pg_cron llama a la función maintenance. */
   maintenanceSecret: () => requireEnv("MAINTENANCE_SECRET"),

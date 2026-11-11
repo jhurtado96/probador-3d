@@ -4,7 +4,7 @@
 -- supabase/tests/e2e/photo_deletion.test.ts.)
 begin;
 \ir helpers/setup.psql
-select plan(42);
+select plan(46);
 
 select pg_temp.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'a@test.local');
 select pg_temp.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'b@test.local');
@@ -51,8 +51,7 @@ select throws_ok(
   $$ select public.complete_job('10000000-0000-4000-8000-000000000001', 1, 'succeeded', null, null,
        jsonb_build_object('avatar', pg_temp.avatar_json('a1000000-0000-4000-8000-000000000001',
                                      'aaaaaaaa-0000-4000-8000-000000000001',
-                                     'storage://assets/bbbbbbbb-0000-4000-8000-000000000002/avatars/robado.glb'),
-                          'input_deleted_at', '2026-11-11T10:00:00Z'),
+                                     'storage://assets/bbbbbbbb-0000-4000-8000-000000000002/avatars/robado.glb')),
        null, 'avatar-0.1', now()) $$,
   '22023', null, 'el worker no puede apuntar a un fichero que no se le autorizó');
 
@@ -60,16 +59,14 @@ select throws_ok(
   $$ select public.complete_job('10000000-0000-4000-8000-000000000001', 1, 'succeeded', null, null,
        jsonb_build_object('avatar', pg_temp.avatar_json('a1000000-0000-4000-8000-000000000001',
                                      'bbbbbbbb-0000-4000-8000-000000000002',
-                                     'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/avatars/j1-a1.glb'),
-                          'input_deleted_at', '2026-11-11T10:00:00Z'),
+                                     'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/avatars/j1-a1.glb')),
        null, 'avatar-0.1', now()) $$,
   '22023', null, 'el avatar tiene que ser del dueño del job');
 
 select is(public.complete_job('10000000-0000-4000-8000-000000000001', 1, 'succeeded', null, null,
        jsonb_build_object('avatar', pg_temp.avatar_json('a1000000-0000-4000-8000-000000000001',
                                      'aaaaaaaa-0000-4000-8000-000000000001',
-                                     'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/avatars/j1-a1.glb'),
-                          'input_deleted_at', '2000-01-01T00:00:00Z'),
+                                     'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/avatars/j1-a1.glb')),
        null, 'avatar-0.1', '2026-11-11T12:00:00Z') ->> 'result',
   'applied', 'callback succeeded aplicado');
 
@@ -77,11 +74,13 @@ select is((select glb_path from public.avatars where id = 'a1000000-0000-4000-80
           'assets/aaaaaaaa-0000-4000-8000-000000000001/avatars/j1-a1.glb', 'avatar persistido con la RUTA, no la URL');
 select is((select status::text from public.jobs where id = '10000000-0000-4000-8000-000000000001'), 'succeeded',
           'job succeeded');
-select is((select (output ->> 'input_deleted_at')::timestamptz from public.jobs
-            where id = '10000000-0000-4000-8000-000000000001'),
-          '2026-11-11T12:00:00Z'::timestamptz, 'output.input_deleted_at es el borrado real, no el que dice el worker');
-select is((select input_deleted_at from public.job_runs where job_id = '10000000-0000-4000-8000-000000000001'),
-          '2026-11-11T12:00:00Z'::timestamptz, 'job_runs anota el borrado');
+select results_eq($$ select input_deleted_at, output ? 'input_deleted_at', fake from public.jobs
+                      where id = '10000000-0000-4000-8000-000000000001' $$,
+                  $$ values ('2026-11-11T12:00:00Z'::timestamptz, false, false) $$,
+                  'jobs.input_deleted_at lo anota la API con el borrado real; no va en la salida del worker');
+select is((select body_model::text || ':' || jsonb_array_length(shape -> 'params') from public.avatars
+            where id = 'a1000000-0000-4000-8000-000000000001'),
+          'mhr:10', 'el avatar guarda el modelo corporal y un vector de forma opaco');
 select is(public.complete_job('10000000-0000-4000-8000-000000000001', 1, 'failed', null, null, null,
           '{"code":"internal","message":"x","retryable":false}') ->> 'result',
           'already_terminal', 'un job terminado no cambia (idempotencia)');
@@ -101,7 +100,8 @@ insert into public.jobs (id, user_id, type, input, attempts, status) values
 insert into public.job_runs (job_id, input_paths, output_paths, dispatched_at) values
   ('10000000-0000-4000-8000-000000000002', array['raw-uploads/aaaaaaaa-0000-4000-8000-000000000001/g1.jpg'],
    array['assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.glb',
-         'assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.png'], now());
+         'assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.png',
+         'assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.json'], now());
 
 select is(public.complete_job('10000000-0000-4000-8000-000000000002', 1, 'succeeded', null, null,
   jsonb_build_object('garment', jsonb_build_object(
@@ -112,9 +112,19 @@ select is(public.complete_job('10000000-0000-4000-8000-000000000002', 1, 'succee
       'measurements', '[{"size_label":"32","zones":{"waist":82,"inseam":80},"source":"estimated"}]'::jsonb,
       'image_url', 'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.png',
       'glb_url', 'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.glb',
-      'pipeline_version', 'garment-0.1', 'created_at', '2026-11-11T10:00:00Z', 'updated_at', '2026-11-11T10:00:00Z'),
-    'input_deleted_at', '2026-11-11T10:00:00Z'),
-  null, 'garment-0.1', now()) ->> 'result', 'applied', 'callback de prenda aplicado');
+      'pipeline_version', 'garment-0.1', 'sewing_pattern_url', 'storage://assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.json',
+      'sewing_pattern_format', 'garmentcode',
+      'created_at', '2026-11-11T10:00:00Z', 'updated_at', '2026-11-11T10:00:00Z'),
+    'embedding', jsonb_build_object('model', 'test-clip',
+                                    'vector', (select jsonb_agg(0.5) from generate_series(1, 512)))),
+  null, 'garment-0.1', now(), true) ->> 'result', 'applied', 'callback de prenda aplicado');
+select results_eq(
+  $$ select g.sewing_pattern_path, g.sewing_pattern_format::text, g.embedding_model,
+            extensions.vector_dims(g.embedding), j.fake, j.output ? 'embedding'
+       from public.garments g, public.jobs j
+      where g.id = '90000000-0000-4000-8000-000000000001' and j.id = '10000000-0000-4000-8000-000000000002' $$,
+  $$ values ('assets/aaaaaaaa-0000-4000-8000-000000000001/garments/g.json', 'garmentcode', 'test-clip', 512, true, false) $$,
+  'patrón de costura y embedding guardados; jobs.fake anotado; el embedding no se queda en jobs.output');
 
 select results_eq(
   $$ select status::text, category::text, name, design_fit::text from public.garments
@@ -150,9 +160,15 @@ select throws_ok($$ select public.complete_job('10000000-0000-4000-8000-00000000
   '{"glb_url":"storage://assets/aaaaaaaa-0000-4000-8000-000000000001/drapes/d.glb","cache_key":"sha256:otra","cache_hit":false}',
   null, 'drape-0.1') $$, '22023', null, 'la cache_key la decide la API, no el worker');
 
+select throws_ok($$ select public.complete_job('10000000-0000-4000-8000-000000000004', 1, 'succeeded', null, null,
+  '{"glb_url":"storage://assets/aaaaaaaa-0000-4000-8000-000000000001/drapes/d.glb","cache_key":"sha256:abc","cache_hit":false,
+    "fit_result":{"id":"f0000000-0000-4000-8000-000000000009","user_id":"bbbbbbbb-0000-4000-8000-000000000002",
+    "avatar_id":"a1000000-0000-4000-8000-000000000001","garment_id":"90000000-0000-4000-8000-000000000001"}}',
+  null, 'drape-0.1') $$, '22023', null, 'el FitResult tiene que ser del dueño del job');
+
 select is(public.complete_job('10000000-0000-4000-8000-000000000004', 1, 'succeeded', null, null,
   '{"glb_url":"storage://assets/aaaaaaaa-0000-4000-8000-000000000001/drapes/d.glb","cache_key":"sha256:abc","cache_hit":false,
-    "fit_result":{"id":"f0000000-0000-4000-8000-000000000001","avatar_id":"a1000000-0000-4000-8000-000000000001",
+    "fit_result":{"id":"f0000000-0000-4000-8000-000000000001","user_id":"aaaaaaaa-0000-4000-8000-000000000001","avatar_id":"a1000000-0000-4000-8000-000000000001",
     "garment_id":"90000000-0000-4000-8000-000000000001","size_label":"32",
     "zones":[{"zone":"waist","body_cm":80,"garment_cm":82,"ease_cm":2,"verdict":"snug"}],
     "verdict":"fits","effective_fit":"slim","matches_design_fit":true,"score":0.9,"method":"simulated",
@@ -162,6 +178,10 @@ select results_eq($$ select glb_path, fit_result_id, simulator_version from publ
                   $$ values ('assets/aaaaaaaa-0000-4000-8000-000000000001/drapes/d.glb',
                              'f0000000-0000-4000-8000-000000000001'::uuid, 'drape-0.1') $$,
                   'drape_cache y fit_results guardados');
+select is((select user_id from public.fit_results where id = 'f0000000-0000-4000-8000-000000000001'),
+          'aaaaaaaa-0000-4000-8000-000000000001'::uuid, 'fit_results.user_id = dueño del job');
+select is((select input_deleted_at from public.jobs where id = '10000000-0000-4000-8000-000000000004'), null,
+          'un drapeado no tiene fotos: input_deleted_at queda nulo');
 
 -- ---------------------------------------------------------------------------
 -- Reintentos y plazos (pg_cron)

@@ -1,12 +1,16 @@
 // POST /functions/v1/job-callback   (lo llama el worker GPU, no la app)
 //
-//   1. Verifica la firma HMAC-SHA256 del cuerpo (cabecera x-probador-signature).
+//   1. Verifica la firma HMAC-SHA256 (x-probador-timestamp + x-probador-signature,
+//      PROBADOR_CALLBACK_SECRET) y que el timestamp no tenga más de 5 minutos.
 //   2. Valida el cuerpo contra JobCallback y, si trae `output`, contra la salida
 //      del tipo de job (AvatarJobOutput, GarmentJobOutput…).
 //   3. Descarta callbacks de intentos anteriores (`attempt`) y de jobs ya terminados.
 //   4. Si el job termina (succeeded o failed): BORRA las fotos originales de
 //      raw-uploads por la API de Storage y solo entonces persiste el resultado
-//      (public.complete_job, una transacción) con el `input_deleted_at` real.
+//      (public.complete_job, una transacción) y anota jobs.input_deleted_at. El
+//      worker no declara el borrado: es propiedad de la API.
+//   5. `fake: true` (worker en modo fake) solo se acepta con
+//      PROBADOR_ALLOW_FAKE_WORKERS=1; queda anotado en jobs.fake.
 //      Si el borrado falla responde 503 para que el worker reintente; el
 //      barrido de 60 min es la red de seguridad.
 //
@@ -15,7 +19,7 @@
 
 import { validate } from "../_shared/contracts.ts";
 import { env } from "../_shared/env.ts";
-import { SIGNATURE_HEADER, verifySignature } from "../_shared/hmac.ts";
+import { verifyRequest } from "../_shared/hmac.ts";
 import { handler, HttpError, json } from "../_shared/http.ts";
 import { removePaths } from "../_shared/storage.ts";
 import { adminClient } from "../_shared/supabase.ts";
@@ -26,8 +30,8 @@ Deno.serve(handler(async (req) => {
   if (req.method !== "POST") throw new HttpError(405, "method_not_allowed", "use POST");
 
   const raw = await req.text();
-  if (!(await verifySignature(env.jobCallbackSecret(), raw, req.headers.get(SIGNATURE_HEADER)))) {
-    throw new HttpError(401, "invalid_signature", "missing or invalid signature");
+  if (!(await verifyRequest(env.callbackSecret(), raw, req.headers))) {
+    throw new HttpError(401, "invalid_signature", "missing, invalid or expired signature");
   }
 
   let body: unknown;
@@ -42,6 +46,10 @@ Deno.serve(handler(async (req) => {
     throw new HttpError(400, "invalid_callback", "body does not match JobCallback", parsed.errors);
   }
   const cb = parsed.value;
+  if (cb.fake && !env.allowFakeWorkers()) {
+    console.warn("fake worker callback rejected", { job_id: cb.job_id });
+    throw new HttpError(422, "fake_not_allowed", "callbacks from fake workers are not accepted here");
+  }
 
   const admin = adminClient();
   const { data: job, error } = await admin
@@ -78,7 +86,8 @@ Deno.serve(handler(async (req) => {
       console.error("input deletion failed", { job_id: job.id, error: (err as Error).message });
       throw new HttpError(503, "input_deletion_failed", "could not delete input photos; retry the callback");
     }
-    inputDeletedAt = new Date().toISOString();
+    // Sin fotos de entrada (drapeado) no hay borrado que anotar.
+    if (paths.length > 0) inputDeletedAt = new Date().toISOString();
   }
 
   const { data: result, error: rpcErr } = await admin.rpc("complete_job", {
@@ -91,6 +100,7 @@ Deno.serve(handler(async (req) => {
     p_error: cb.error ?? null,
     p_worker_version: cb.worker_version,
     p_input_deleted_at: inputDeletedAt,
+    p_fake: cb.fake === true,
   });
   if (rpcErr) {
     if (rpcErr.code === "P0002") throw new HttpError(404, "not_found", "job not found");

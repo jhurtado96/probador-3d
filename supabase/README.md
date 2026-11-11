@@ -49,15 +49,26 @@ Tablas en `public`, todas con RLS: `profiles` (los "users" del plan), `consents`
 
 - Columnas = campos del contrato en snake_case; objetos anidados en `jsonb`;
   enums de Postgres con los mismos valores que las constantes del contrato.
+  Todas las tablas tienen tipo en el contrato (v0.2.0), incluidas `profiles`
+  (`Profile`), `consents` (`Consent`), `user_fit_preferences`
+  (`UserFitPreferences`) y `drape_cache` (`DrapeCache`).
 - Excepción: los `*_url` del contrato que apuntan a Storage privado se guardan
   como **ruta** en `*_path` (`avatars.glb_path`, `garments.image_path`,
-  `garments.glb_path`, `outfits.preview_path`, `drape_cache.glb_path`). La app
+  `garments.glb_path`, `garments.sewing_pattern_path`, `outfits.preview_path`,
+  `drape_cache.glb_path`; la tabla es `STORAGE_URL_COLUMNS` en el contrato). La app
   firma la ruta con `storage.from('assets').createSignedUrl(path sin "assets/")`
   (las políticas lo permiten para lo propio). En `jobs.output` las URLs quedan
   como `storage://<ruta>`, tal como las envía el worker.
+- El avatar no depende de la topología del modelo corporal: `avatars.body_model`
+  (`mhr`, `anny`, `smplx`), `model_version` y un vector de forma opaco (`shape`).
+- `jobs.input_deleted_at` (cuándo se borraron las fotos) y `jobs.fake` los
+  escribe solo la API; el worker no declara el borrado.
+- `garments.sewing_pattern_path`: patrón GarmentCode del que sale el GLB y que
+  simula el drapeado. `fit_results.user_id` = dueño del avatar (RLS directo).
 - `Garment.measurements` vive en `garment_measurements`; la vista
   `garments_with_measurements` (security_invoker) devuelve el Garment completo.
 - Embeddings: `garments.embedding vector(512)` (CLIP/FashionCLIP) con índice HNSW coseno.
+  Llega en `GarmentJobOutput.embedding`; no se guarda en `jobs.output` ni se sirve a la app.
 - Todo cuelga de `auth.users` con `ON DELETE CASCADE`.
 
 Qué puede hacer la app con su JWT (resumen de RLS):
@@ -84,7 +95,14 @@ borra los outfits recomendados. Los GLB que quedan sin referencia los borra el G
 | Bucket | Contenido | Acceso |
 |---|---|---|
 | `raw-uploads` (privado, 10 MB, jpeg/png/webp) | fotos de cuerpo, selfies, fotos de prenda: `raw-uploads/<uid>/<nombre>.jpg` | Subida solo con URL firmada de `create-job`; lectura solo el worker (URL firmada 15 min); el dueño puede borrar |
-| `assets` (privado, 50 MB) | `<uid>/avatars/`, `<uid>/garments/`, `<uid>/drapes/` (los escribe el worker con URL firmada), `<uid>/outfits/` (la app), `catalog/` | El dueño lee lo suyo; `catalog/` lo lee cualquiera |
+| `assets` (privado, 50 MB) | `<uid>/avatars/`, `<uid>/garments/<garment_id>/` (GLB, recorte y patrón), `<uid>/drapes/` (los escribe el worker con URL firmada), `<uid>/outfits/` (la app), `catalog/` | El dueño lee lo suyo; `catalog/` lo lee cualquiera |
+
+URLs firmadas: las de descarga que recibe el worker duran 15 min. Las de subida
+duran 2 h (límite fijo de Supabase, aceptado; ver el registro de decisiones de
+`docs/architecture.md`). Lo compensan: la ruta de salida es única por job e
+intento (`<job_id>-a<attempt>`), cada URL admite una sola subida (sin `upsert`),
+el callback solo acepta las rutas emitidas para el intento en curso, y en
+`raw-uploads` el job caduca y el barrido borra todo a los 60 minutos.
 
 Borrado de fotos: (1) `job-callback` borra las entradas antes de cerrar el job,
 termine bien o mal; (2) `maintenance` borra cada minuto las de jobs terminados
@@ -105,10 +123,17 @@ vencidos, marca `failed/timeout` el tercero y `failed/invalid_input` los jobs
 cuyas fotos no llegaron en 60 min. Los callbacks con `attempt` distinto del actual
 se descartan (409) y los de jobs terminados son idempotentes.
 
-Contrato del worker: recibe `JobDispatch` por POST con `Authorization: Bearer
-$WORKER_DISPATCH_TOKEN`; sube cada artefacto con `PUT` a `output_uploads[].upload_url`;
-devuelve los artefactos como `storage://<path>`; firma los callbacks con
-`x-probador-signature: sha256=<hex(HMAC-SHA256(JOB_CALLBACK_SECRET, cuerpo))>`.
+Contrato del worker: recibe `JobDispatch` por POST (con `user_id`,
+`contracts_version` y, en el drapeado, `context`: GLB del avatar, patrón y GLB
+de la prenda, medidas, tejido y `cache_key`); sube cada artefacto con un único
+`PUT` a `output_uploads[].upload_url` con su `content_type`; devuelve los
+artefactos como `storage://<path>`. Despacho y callback se firman igual
+(`_shared/hmac.ts`, especificado en `packages/contracts`):
+`x-probador-timestamp: <segundos Unix>` y
+`x-probador-signature: sha256=<hex(HMAC-SHA256(secreto, "<timestamp>." + cuerpo))>`,
+con `PROBADOR_DISPATCH_SECRET` hacia el worker y `PROBADOR_CALLBACK_SECRET` de
+vuelta; más de 300 s de desfase se rechaza (401). Los callbacks con `fake: true`
+se rechazan (422 `fake_not_allowed`) salvo con `PROBADOR_ALLOW_FAKE_WORKERS=1`.
 Si el callback recibe 503 (no pudo borrar la foto) debe reintentarlo.
 
 ## Variables de entorno (sin valores)
@@ -118,10 +143,11 @@ Edge Functions (`supabase secrets set` en la nube; `functions/.env` en local, ve
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | las inyecta Supabase | cliente admin |
-| `JOB_CALLBACK_SECRET` | sí | HMAC de los callbacks (compartido con el worker) |
+| `PROBADOR_CALLBACK_SECRET` | sí | HMAC de los callbacks (mismo nombre y valor en el worker) |
+| `PROBADOR_DISPATCH_SECRET` | para despachar | HMAC del despacho (mismo nombre y valor en el worker). Sin él no se despacha |
+| `PROBADOR_ALLOW_FAKE_WORKERS` | no | `1` acepta callbacks de workers fake. Solo desarrollo |
 | `MAINTENANCE_SECRET` | sí | autentica a pg_cron en `maintenance` |
 | `WORKER_DISPATCH_URL` | para despachar | endpoint de Modal (UE). Vacío = los jobs esperan en cola |
-| `WORKER_DISPATCH_TOKEN` | recomendada | Bearer hacia el worker |
 | `JOB_CALLBACK_URL` | no | URL de callback enviada al worker (por defecto la del proyecto) |
 | `PUBLIC_SUPABASE_URL` | solo local | reescribe el origen de las URLs firmadas (dentro de Docker es `http://kong:8000`) |
 | `JOB_DAILY_QUOTA` | no (50) | jobs por usuario y 24 h |
@@ -164,15 +190,16 @@ npx supabase db lint --level warning                       # plpgsql_check
 eval "$(npx supabase status -o env | grep -E '^(ANON_KEY|SERVICE_ROLE_KEY|DB_URL)=')"
 cd supabase
 SUPABASE_ANON_KEY=$ANON_KEY SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY SUPABASE_DB_URL=$DB_URL \
-JOB_CALLBACK_SECRET=<el de functions/.env> MAINTENANCE_SECRET=<el de functions/.env> \
+PROBADOR_CALLBACK_SECRET=<el de functions/.env> PROBADOR_DISPATCH_SECRET=<ídem> MAINTENANCE_SECRET=<ídem> \
 deno test --config functions/deno.json --allow-net --allow-env --allow-read tests/e2e/
 
-deno check --config functions/deno.json functions/*/index.ts
+deno test --config functions/deno.json --allow-read tests/unit/      # firma HMAC, sin stack local
+deno check --config functions/deno.json functions/*/index.ts tests/*/*.ts
 ```
 
 El e2e hace de worker falso en el puerto 8787: crea un usuario, pide un job,
 sube la foto con la URL firmada, recibe el `JobDispatch`, sube un GLB, manda
-callbacks (firma inválida, fuera de contrato, intento viejo, éxito, fallo) y
+callbacks (firma inválida, firma antigua, worker fake, fuera de contrato, intento viejo, éxito, fallo) y
 comprueba que la foto desaparece de Storage; después prueba el barrido de 60 min
 y que `delete-account` deja Storage vacío y borra el usuario.
 
@@ -181,11 +208,12 @@ y que `delete-account` deja Storage vacío y borra el usuario.
 - `POST /consents` (registro de consentimientos) no es una función: la app
   inserta en `consents` con RLS. Si el texto legal tiene que validarse en
   servidor, añadir la función.
-- Exportación de datos (portabilidad) no implementada.
-- Las URLs firmadas de subida de Supabase caducan a las 2 h (no configurable),
-  no a los 15 min del documento de arquitectura; las de descarga sí son de 15 min.
-- `delete-account` borra también `consents`; si hace falta conservar prueba del
-  consentimiento tras la baja, decidirlo con legal.
+- **Pendiente de implementar (decidido, ver registro de decisiones):** al borrar
+  la cuenta, los consentimientos no deben irse en cascada: se conserva un
+  registro mínimo seudonimizado y bloqueado durante 3 años. Hoy `delete-account`
+  borra también `consents`.
+- **Pendiente de implementar (decidido):** endpoint de exportación de datos en
+  JSON con URLs firmadas a los GLB (arts. 15 y 20 RGPD).
 - No probado contra un proyecto en la nube (`db push`/`functions deploy`): en
   local las funciones importan `packages/contracts` fuera de `supabase/` y
   funciona; confirmar que el empaquetado del deploy también lo incluye.

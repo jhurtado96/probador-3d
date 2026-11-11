@@ -1,5 +1,7 @@
-// Respuestas HTTP comunes. Los errores de la API siguen la forma
-// `{ "error": { "code": string, "message": string, "details"?: unknown } }`.
+// Respuestas HTTP comunes. Los errores de la API siguen el tipo ApiErrorBody del
+// contrato: `{ "error": { "code": ApiErrorCode, "message": string, "details"?: unknown } }`.
+
+import type { ApiErrorBody, ApiErrorCode } from "@probador/contracts";
 
 export const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +12,7 @@ export const corsHeaders: Record<string, string> = {
 export class HttpError extends Error {
   constructor(
     readonly status: number,
-    readonly code: string,
+    readonly code: ApiErrorCode,
     message: string,
     readonly details?: unknown,
   ) {
@@ -27,15 +29,16 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 
 export function errorResponse(err: unknown): Response {
   if (err instanceof HttpError) {
-    return json(
-      { error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } },
-      err.status,
-    );
+    const body: ApiErrorBody = {
+      error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) },
+    };
+    return json(body, err.status);
   }
   // Nunca se registran cuerpos de petición, URLs firmadas ni medidas: solo el error.
   const message = (err as { message?: unknown })?.message;
   console.error("unhandled error", typeof message === "string" ? message : String(err));
-  return json({ error: { code: "internal", message: "internal error" } }, 500);
+  const body: ApiErrorBody = { error: { code: "internal", message: "internal error" } };
+  return json(body, 500);
 }
 
 /** Envuelve un handler: CORS, preflight y errores uniformes. */
