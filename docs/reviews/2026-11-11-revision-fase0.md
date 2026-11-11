@@ -33,7 +33,7 @@ Además hay 8 hallazgos de gravedad media y 11 de gravedad baja.
 
 Commits: contratos v0.4.0 `bef27d2`, Supabase `fcae63d`, workers `fa6d6aa`, documentación `ceac63b` y este commit (B10 y este informe). Cada hallazgo lleva al final un bloque **Estado** con lo hecho y lo que queda.
 
-Verificación de las correcciones, con Docker y el stack local de Supabase: `supabase db reset` aplica las 13 migraciones; `supabase test db` pasa 204 tests pgTAP (68 nuevos en `04_review_fixes.test.sql`); el e2e pasa sus 7 pasos (despacho en dos pasos, entrega única, subidas revocadas, `jobs` solo con ids, archivo con `email_hash`); `uv run pytest` pasa 77 tests en los workers; `npm test` en contratos, `npx tsc --noEmit` en la app y `deno check`, `deno lint` y `deno fmt --check` en `supabase/` pasan.
+Verificación de las correcciones, con Docker y el stack local de Supabase: `supabase db reset` aplica las 13 migraciones; `supabase test db` pasa 204 tests pgTAP (68 nuevos en `04_review_fixes.test.sql`); el e2e pasa sus 7 pasos (despacho en dos pasos, entrega única, subidas revocadas, `jobs` solo con ids, archivo con `email_hash`); `uv run pytest` pasa 68 tests en los workers (19 nuevos); `supabase db lint` no encuentra errores; `npm test` en contratos, `npx tsc --noEmit` en la app y `deno check`, `deno lint` y `deno fmt --check` en `supabase/` pasan.
 
 ## Cómo se ha comprobado
 
