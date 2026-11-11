@@ -1,7 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { env, optionalEnv } from "./env.ts";
 
 export const RAW_BUCKET = "raw-uploads";
 export const ASSETS_BUCKET = "assets";
+
+/**
+ * Las URLs firmadas se generan contra SUPABASE_URL. En local esa URL es la red
+ * interna de Docker (http://kong:8000); PUBLIC_SUPABASE_URL la sustituye por
+ * una que el worker o el usuario puedan alcanzar.
+ */
+export function publicUrl(url: string): string {
+  const pub = optionalEnv("PUBLIC_SUPABASE_URL");
+  const internal = env.supabaseUrl();
+  return pub && url.startsWith(internal) ? pub + url.slice(internal.length) : url;
+}
 
 /** Las rutas del contrato (StoragePath) llevan el bucket delante: `bucket/carpeta/fichero`. */
 export function splitPath(path: string): { bucket: string; name: string } {

@@ -13,12 +13,18 @@ import jobCallbackSchema from "@probador/contracts/schemas/job_callback.schema.j
 import jobDispatchSchema from "@probador/contracts/schemas/job_dispatch.schema.json" with {
   type: "json",
 };
+import dataExportSchema from "@probador/contracts/schemas/data_export.schema.json" with {
+  type: "json",
+};
 
 export type {
   ApiErrorBody,
   ApiErrorCode,
   CreateJobRequest,
   CreateJobResponse,
+  DataExport,
+  DataExportJob,
+  DataExportJobInput,
   DrapeJobContext,
   DrapeJobInput,
   GarmentJobInput,
@@ -30,9 +36,14 @@ export type {
   SignedUpload,
   UploadTicket,
 } from "@probador/contracts";
-export { CONTRACTS_VERSION, JOB_TYPES } from "@probador/contracts";
+export {
+  CONTRACTS_VERSION,
+  DATA_EXPORT_FORMAT,
+  DATA_EXPORT_SIGNED_URL_TTL_SECONDS,
+  JOB_TYPES,
+} from "@probador/contracts";
 
-import type { CreateJobRequest, JobCallback, JobDispatch, JobType } from "@probador/contracts";
+import type { CreateJobRequest, DataExport, JobCallback, JobDispatch, JobType } from "@probador/contracts";
 
 // ajv-formats es CommonJS: según el cargador, el plugin llega como default o como default.default.
 type FormatsPlugin = (ajv: Ajv) => Ajv;
@@ -44,6 +55,7 @@ addFormats(ajv);
 ajv.addSchema(createJobRequestSchema);
 ajv.addSchema(jobCallbackSchema);
 ajv.addSchema(jobDispatchSchema);
+ajv.addSchema(dataExportSchema);
 
 function compiled(id: string): ValidateFunction {
   const fn = ajv.getSchema(id);
@@ -57,6 +69,7 @@ const validators = {
   createJobRequest: compiled((createJobRequestSchema as { $id: string }).$id),
   jobCallback: compiled(CALLBACK_ID),
   jobDispatch: compiled((jobDispatchSchema as { $id: string }).$id),
+  dataExport: compiled((dataExportSchema as { $id: string }).$id),
   output: {
     avatar: compiled(`${CALLBACK_ID}#/definitions/AvatarJobOutput`),
     garment: compiled(`${CALLBACK_ID}#/definitions/GarmentJobOutput`),
@@ -84,5 +97,6 @@ export const validate = {
   createJobRequest: (d: unknown) => result<CreateJobRequest>(validators.createJobRequest, d),
   jobCallback: (d: unknown) => result<JobCallback>(validators.jobCallback, d),
   jobDispatch: (d: unknown) => result<JobDispatch>(validators.jobDispatch, d),
+  dataExport: (d: unknown) => result<DataExport>(validators.dataExport, d),
   output: (type: JobType, d: unknown) => result<unknown>(validators.output[type], d),
 };

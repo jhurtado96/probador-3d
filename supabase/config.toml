@@ -411,6 +411,10 @@ verify_jwt = true
 import_map = "./functions/deno.json"
 verify_jwt = true
 
+[functions.export-data]
+import_map = "./functions/deno.json"
+verify_jwt = true
+
 [functions.job-callback]
 import_map = "./functions/deno.json"
 verify_jwt = false

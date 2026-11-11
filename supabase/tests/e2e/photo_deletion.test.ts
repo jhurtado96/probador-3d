@@ -6,7 +6,11 @@
 //   · job-callback rechaza firmas malas y, al terminar el job (bien o mal),
 //     borra la foto de raw-uploads.
 //   · maintenance barre las fotos de más de 60 minutos.
-//   · delete-account deja Storage vacío y borra el usuario y sus filas.
+//   · export-data (D7) devuelve un DataExport válido, con URLs firmadas que
+//     descargan los ficheros, sin rutas internas y sin datos de otro usuario;
+//     aplica la cuota diaria.
+//   · delete-account deja Storage vacío y borra el usuario y sus filas, pero
+//     deja sus consentimientos archivados y seudonimizados (D6).
 //
 // Uso: ver supabase/README.md («Tests»); se ejecuta con --config functions/deno.json
 // (mismo mapa de imports que las funciones). Variables:
@@ -19,7 +23,8 @@ import { strict as assert } from "node:assert";
 import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
 import { signedHeaders, verifyRequest } from "../../functions/_shared/hmac.ts";
-import type { JobDispatch } from "@probador/contracts";
+import { CONTRACTS_VERSION, type DataExport, type JobDispatch } from "@probador/contracts";
+import { validate } from "../../functions/_shared/contracts.ts";
 
 const env = (k: string, d?: string) => {
   const v = Deno.env.get(k) ?? d;
@@ -37,6 +42,18 @@ const WORKER_PORT = Number(env("FAKE_WORKER_PORT", "8787"));
 
 const admin = createClient(URL_, SERVICE, { auth: { persistSession: false } });
 const sql = postgres(DB_URL, { max: 1 });
+
+// delete-account exige el secreto del seudónimo de consentimientos en Vault (D6).
+// Si el stack local no lo tiene, se crea uno para el test y se borra al final.
+const CONSENT_SECRET_NAME = "consent_pseudonym_secret";
+const createdConsentSecret = (await sql`
+  select vault.create_secret(${"e2e-" + crypto.randomUUID() + crypto.randomUUID()}, ${CONSENT_SECRET_NAME})
+   where not exists (select 1 from vault.secrets where name = ${CONSENT_SECRET_NAME})`).length > 0;
+
+/** HMAC-SHA256(secreto de Vault, user_id) en hex, calculado por Postgres. */
+const consentHash = async (userId: string) =>
+  (await sql`select encode(extensions.hmac(${userId}, decrypted_secret, 'sha256'), 'hex') as h
+               from vault.decrypted_secrets where name = ${CONSENT_SECRET_NAME}`)[0].h as string;
 
 // Worker falso: verifica la firma del despacho (la misma que la del callback) y guarda cada JobDispatch.
 const dispatches = new Map<string, JobDispatch>();
@@ -65,9 +82,9 @@ async function callFn(name: string, token: string | null, body: unknown, method 
       apikey: ANON,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify(body),
+    body: method === "GET" ? undefined : JSON.stringify(body),
   });
-  return { status: res.status, body: await res.json() };
+  return { status: res.status, body: await res.json(), headers: res.headers };
 }
 
 /** sign: "ok" firma bien; "forged" firma con otro secreto; "old" es una firma válida de hace 10 minutos (reenvío). */
@@ -90,6 +107,7 @@ const rawObjects = async (userId: string) =>
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 0xff, 0xd9]);
 const GLB = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 12, 0, 0, 0]);
+const PNG = new Uint8Array([137, 80, 78, 71]);
 
 Deno.test({
   name: "e2e: el ciclo de vida de una foto termina siempre en su borrado",
@@ -105,6 +123,7 @@ Deno.test({
     const { data: session, error: sErr } = await user.auth.signInWithPassword({ email, password });
     assert.ifError(sErr);
     const token = session.session!.access_token;
+    let otherId = "";
 
     const { data: consent, error: consErr } = await user.from("consents")
       .insert({ purpose: "body_scan", text_version: "body_scan-test" }).select("id").single();
@@ -337,11 +356,107 @@ Deno.test({
       assert.ok(gone.error, "el fichero barrido sigue descargable");
     });
 
-    await t.step("delete-account: Storage vacío, usuario y filas borrados", async () => {
-      const prev = await user.storage.from("assets").upload(`${uid}/outfits/p.png`, new Uint8Array([137, 80, 78, 71]), {
+    await t.step("export-data: DataExport válido, ficheros descargables y solo datos propios", async () => {
+      // Otro usuario con datos propios: nada suyo puede aparecer en la exportación.
+      const otherEmail = `e2e-other-${crypto.randomUUID()}@test.local`;
+      const { data: other, error: oErr } = await admin.auth.admin.createUser({
+        email: otherEmail,
+        password,
+        email_confirm: true,
+      });
+      assert.ifError(oErr);
+      otherId = other.user!.id;
+      const otherClient = createClient(URL_, ANON, { auth: { persistSession: false } });
+      assert.ifError((await otherClient.auth.signInWithPassword({ email: otherEmail, password })).error);
+      const { data: otherConsent } = await otherClient.from("consents")
+        .insert({ purpose: "personalization", text_version: "other-v1" }).select("id").single();
+      const { data: otherGarment } = await otherClient.from("garments").insert({ name: "ajena" }).select("id").single();
+      assert.ok(otherConsent && otherGarment);
+
+      // Más datos propios: prenda, preferencias y outfit con miniatura en Storage.
+      const { data: garment, error: gErr } = await user.from("garments")
+        .insert({ name: "camisa", size_label: "M" }).select("id").single();
+      assert.ifError(gErr);
+      assert.ifError((await user.from("user_fit_preferences").insert({ default_fit: "relaxed" })).error);
+      const preview = await user.storage.from("assets").upload(`${uid}/outfits/p.png`, PNG, {
         contentType: "image/png",
       });
-      assert.ifError(prev.error);
+      assert.ifError(preview.error);
+      assert.ifError(
+        (await user.from("outfits").insert({
+          items: [{ garment_id: garment!.id, size_label: "M", layer: 0 }],
+          preview_path: `assets/${uid}/outfits/p.png`,
+        })).error,
+      );
+
+      const anon = await callFn("export-data", null, null, "GET");
+      assert.equal(anon.status, 401);
+      const wrongMethod = await callFn("export-data", token, {}, "POST");
+      assert.equal(wrongMethod.status, 405);
+      assert.equal(wrongMethod.body.error.code, "method_not_allowed");
+
+      const res = await callFn("export-data", token, null, "GET");
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.match(res.headers.get("content-disposition") ?? "", /attachment/);
+      assert.equal(res.headers.get("cache-control"), "no-store");
+      const checked = validate.dataExport(res.body);
+      assert.ok(checked.ok, JSON.stringify(!checked.ok && checked.errors));
+      const exp = res.body as DataExport;
+
+      assert.equal(exp.contracts_version, CONTRACTS_VERSION);
+      assert.equal(exp.original_photos_retained, false);
+      assert.ok(exp.notes.some((n) => n.includes("fotos originales")));
+      assert.equal(
+        new Date(exp.signed_urls_expire_at).getTime() - new Date(exp.exported_at).getTime(),
+        3600 * 1000,
+        "las URLs firmadas duran 1 h",
+      );
+      assert.equal(exp.account.id, uid);
+      assert.equal(exp.account.email, email);
+      assert.equal(exp.profile?.id, uid);
+      assert.deepEqual(exp.consents.map((c) => c.id), [consent!.id]);
+      assert.equal(exp.avatars.length, 1);
+      assert.equal(exp.avatars[0].measurements.height_cm, 172);
+      assert.deepEqual(exp.garments.map((g) => g.id), [garment!.id]);
+      assert.equal(exp.user_fit_preferences?.default_fit, "relaxed");
+      assert.equal(exp.outfits.length, 1);
+      assert.equal(exp.jobs.length, 2);
+
+      // Solo datos propios: todos los user_id son el suyo y nada del otro usuario aparece.
+      const sections = [exp.consents, exp.avatars, exp.color_profiles, exp.garments, exp.fit_results, exp.outfits];
+      for (const rows of [...sections, exp.drape_cache]) {
+        for (const r of rows as Array<{ user_id: string | null }>) assert.equal(r.user_id, uid);
+      }
+      const text = JSON.stringify(exp);
+      for (const foreign of [otherId, otherConsent!.id, otherGarment!.id]) {
+        assert.ok(!text.includes(foreign), "la exportación contiene datos de otro usuario");
+      }
+
+      // Sin rutas internas: ni fotos, ni referencias storage://, ni output de los jobs.
+      assert.ok(!text.includes("raw-uploads"), "la exportación lleva rutas de raw-uploads");
+      assert.ok(!text.includes("storage://"), "la exportación lleva referencias storage://");
+      assert.ok(!/"[a-z_]+_paths?"\s*:/.test(text), "la exportación lleva columnas *_path");
+      for (const j of exp.jobs) {
+        assert.equal((j as unknown as Record<string, unknown>).output, undefined);
+        assert.equal((j.input as Record<string, unknown>).photo_path, undefined);
+      }
+
+      // Las URLs firmadas descargan los ficheros.
+      const glb = await fetch(exp.avatars[0].glb_url!);
+      assert.equal(glb.status, 200);
+      assert.deepEqual(new Uint8Array(await glb.arrayBuffer()), GLB);
+      const png = await fetch(exp.outfits[0].preview_url!);
+      assert.equal(png.status, 200);
+      assert.deepEqual(new Uint8Array(await png.arrayBuffer()), PNG);
+
+      // Cuota: 5 exportaciones por 24 h (ya lleva 1).
+      await sql`insert into public.data_export_requests (user_id) select ${uid}::uuid from generate_series(1, 4)`;
+      const limited = await callFn("export-data", token, null, "GET");
+      assert.equal(limited.status, 429);
+      assert.equal(limited.body.error.code, "quota_exceeded");
+    });
+
+    await t.step("delete-account: Storage vacío, usuario y filas borrados", async () => {
       const before = await sql`select count(*)::int as n from storage.objects where name like ${uid + "/%"}`;
       assert.ok(before[0].n >= 3, "debería haber foto nueva, GLB del avatar y miniatura");
 
@@ -358,11 +473,48 @@ Deno.test({
         select (select count(*) from public.profiles where id = ${uid})
              + (select count(*) from public.consents where user_id = ${uid})
              + (select count(*) from public.avatars where user_id = ${uid})
-             + (select count(*) from public.jobs where user_id = ${uid}) as n`;
+             + (select count(*) from public.jobs where user_id = ${uid})
+             + (select count(*) from public.data_export_requests where user_id = ${uid}) as n`;
       assert.equal(Number(rows[0].n), 0);
       const { data: u } = await admin.auth.admin.getUserById(uid);
       assert.equal(u.user, null);
     });
+
+    await t.step("delete-account: el consentimiento queda archivado, seudonimizado y bloqueado (D6)", async () => {
+      const hash = await consentHash(uid);
+      const archived = await sql`select * from public.consent_records_archive where user_hash = ${hash}`;
+      assert.equal(archived.length, 1, "falta el registro archivado del consentimiento");
+      const a = archived[0];
+      assert.deepEqual(Object.keys(a).sort(), [
+        "archived_at",
+        "granted_at",
+        "purpose",
+        "text_version",
+        "user_hash",
+        "withdrawn_at",
+      ]);
+      assert.equal(a.purpose, "body_scan");
+      assert.equal(a.text_version, "body_scan-test");
+      assert.ok(a.withdrawn_at, "el vigente se archiva con la fecha de la baja como retirada");
+      assert.ok(!JSON.stringify(a).includes(uid), "el archivo contiene el user_id en claro");
+
+      // Bloqueado: la API no lo sirve a usuarios; solo service_role lo lee.
+      const { data: anonRead, error: anonErr } = await createClient(URL_, ANON, { auth: { persistSession: false } })
+        .from("consent_records_archive").select("*");
+      assert.ok(anonErr || (anonRead ?? []).length === 0, "anon puede leer el archivo");
+      const { data: svcRead, error: svcErr } = await admin.from("consent_records_archive").select("user_hash")
+        .eq("user_hash", hash);
+      assert.ifError(svcErr);
+      assert.equal(svcRead!.length, 1);
+    });
+
+    // Limpieza: el otro usuario y los registros archivados que deja el test.
+    if (otherId) {
+      const hashes = [await consentHash(uid), await consentHash(otherId)];
+      assert.ifError((await admin.auth.admin.deleteUser(otherId)).error);
+      await sql`delete from public.consent_records_archive where user_hash in ${sql(hashes)}`;
+    }
+    if (createdConsentSecret) await sql`delete from vault.secrets where name = ${CONSENT_SECRET_NAME}`;
 
     await worker.shutdown();
     await sql.end();

@@ -12,9 +12,9 @@ import {
   type SignedUpload,
   validate,
 } from "./contracts.ts";
-import { env, optionalEnv } from "./env.ts";
+import { env } from "./env.ts";
 import { signedHeaders } from "./hmac.ts";
-import { ASSETS_BUCKET, splitPath } from "./storage.ts";
+import { ASSETS_BUCKET, publicUrl, splitPath } from "./storage.ts";
 
 /** Vida de las URLs firmadas de descarga que recibe el worker (docs/architecture.md §3.2). */
 const INPUT_URL_TTL_SECONDS = 15 * 60;
@@ -28,17 +28,6 @@ export interface ClaimedJob {
   attempt: number;
   input_paths: string[];
   cache_key: string | null;
-}
-
-/**
- * Las URLs firmadas se generan contra SUPABASE_URL. En local esa URL es la red
- * interna de Docker (http://kong:8000); PUBLIC_SUPABASE_URL la sustituye por
- * una que el worker pueda alcanzar.
- */
-function publicUrl(url: string): string {
-  const pub = optionalEnv("PUBLIC_SUPABASE_URL");
-  const internal = env.supabaseUrl();
-  return pub && url.startsWith(internal) ? pub + url.slice(internal.length) : url;
 }
 
 type PlannedOutput = Pick<SignedUpload, "name" | "path" | "content_type">;
@@ -81,7 +70,9 @@ async function drapeContext(
   const input = job.input as unknown as DrapeJobInput;
   const [{ data: avatar, error: e1 }, { data: garment, error: e2 }, { data: sizes, error: e3 }] = await Promise.all([
     admin.from("avatars")
-      .select("glb_path, body_model, model_version, shape_hash, measurements, measurements_override, measurements_sigma_cm")
+      .select(
+        "glb_path, body_model, model_version, shape_hash, measurements, measurements_override, measurements_sigma_cm",
+      )
       .eq("id", input.avatar_id).maybeSingle(),
     admin.from("garments")
       .select("glb_path, sewing_pattern_path, sewing_pattern_format, level, category, design_fit, attributes")

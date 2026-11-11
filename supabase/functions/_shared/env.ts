@@ -15,6 +15,7 @@ export const env = {
   /** Las inyecta Supabase en cada función. */
   supabaseUrl: () => requireEnv("SUPABASE_URL"),
   serviceRoleKey: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  anonKey: () => requireEnv("SUPABASE_ANON_KEY"),
 
   /** Secreto HMAC con el que los workers firman los callbacks (mismo nombre en el worker). */
   callbackSecret: () => requireEnv("PROBADOR_CALLBACK_SECRET"),
@@ -31,12 +32,13 @@ export const env = {
   /** Endpoint web de Modal (región UE) que recibe JobDispatch. Sin él no se despacha. */
   workerDispatchUrl: () => optionalEnv("WORKER_DISPATCH_URL"),
 
-
   /** Secreto con el que pg_cron llama a la función maintenance. */
   maintenanceSecret: () => requireEnv("MAINTENANCE_SECRET"),
 
   /** Jobs por usuario en 24 h (coste de GPU). */
   jobDailyQuota: () => Number(optionalEnv("JOB_DAILY_QUOTA") ?? "50"),
+  /** Exportaciones de datos (export-data) por usuario en 24 h. */
+  dataExportDailyQuota: () => Number(optionalEnv("DATA_EXPORT_DAILY_QUOTA") ?? "5"),
   /** Versión del simulador de tela; forma parte de la clave de caché del drapeado. */
   drapeSimulatorVersion: () => optionalEnv("DRAPE_SIMULATOR_VERSION") ?? "drape-sim-0",
 };
