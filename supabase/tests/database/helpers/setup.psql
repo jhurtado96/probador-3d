@@ -50,3 +50,9 @@ returns jsonb language sql as $$
     'measurements_source', 'photo', 'glb_url', p_glb, 'pose', 'a_pose', 'shape_hash', 'shape-' || p_user,
     'confidence', 0.8, 'created_at', '2026-11-11T10:00:00Z', 'updated_at', '2026-11-11T10:00:00Z');
 $$;
+
+-- Secreto del seudónimo de los consentimientos archivados (D6). Sin él no se
+-- puede borrar un usuario con consentimientos. Si el entorno ya tiene uno se
+-- usa ese; si no, se crea uno temporal que se deshace con la transacción.
+select vault.create_secret('pgtap-consent-pseudonym-secret-0123456789abcdef', 'consent_pseudonym_secret')
+ where not exists (select 1 from vault.secrets where name = 'consent_pseudonym_secret');
