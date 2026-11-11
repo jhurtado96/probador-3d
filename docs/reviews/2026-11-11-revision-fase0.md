@@ -1,6 +1,6 @@
 # Revisión crítica de la fase 0 · 2026-11-11
 
-Alcance: `supabase/` (migraciones, RLS, Storage, Edge Functions, pg_cron), `services/workers`, `packages/contracts` y `apps/app`, en la rama `main` (`ad6fcd3`). Se han leído también `README.md`, `docs/architecture.md` (con §7) y `docs/integration-issues.md`. No se ha corregido nada.
+Alcance: `supabase/` (migraciones, RLS, Storage, Edge Functions, pg_cron), `services/workers`, `packages/contracts` y `apps/app`, en la rama `main` (`ad6fcd3`). Se han leído también `README.md`, `docs/architecture.md` (con §7) y `docs/integration-issues.md`. No se ha corregido nada en la revisión; las correcciones posteriores están en «Estado de las correcciones».
 
 ## Resumen
 
@@ -14,20 +14,26 @@ Hay **tres hallazgos altos**, todos de retención o de salida de datos personale
 
 Además hay 8 hallazgos de gravedad media y 11 de gravedad baja.
 
-| # | Gravedad | Tema | Estado |
-|---|---|---|---|
-| A1 | Alta | Copias de datos derivados en `jobs` sin plazo; sobreviven a la retirada | Comprobado (SQL) |
-| A2 | Alta | Retirada de colorimetría no borra perfiles con `user_overridden` | Comprobado (SQL) |
-| A3 | Alta | Entradas y resultados de los jobs retenidos por Modal, posible salida de la UE | Comprobado en código; verificar con Modal |
-| M1 | Media | Prueba de consentimiento escrita por el cliente y archivo D6 que no se puede vincular a nadie | Comprobado (SQL) |
-| M2 | Media | Ficheros que aparecen después de la baja o de la retirada y duran hasta ~48 h | Razonado sobre el código |
-| M3 | Media | Edge Functions sin región fijada | Razonado; verificar en el despliegue |
-| M4 | Media | La caché de drapeado ignora `measurements_override` | Comprobado en código |
-| M5 | Media | Jobs de prenda sin consentimiento aunque las fotos pueden mostrar a la persona | Diseño |
-| M6 | Media | La red de seguridad de 60 min puede fallar en silencio | Comprobado en código |
-| M7 | Media | Zonas de fit sin medida corporal equivalente | Comprobado en contrato |
-| M8 | Media | Sesgos: validación del avatar pequeña, escalas de piel distintas, captura solo de pie | Diseño |
-| B1–B11 | Baja | Ver §3 | — |
+| # | Gravedad | Tema | Estado | Corrección (2026-11-11) |
+|---|---|---|---|---|
+| A1 | Alta | Copias de datos derivados en `jobs` sin plazo; sobreviven a la retirada | Comprobado (SQL) | **Corregido** (`bef27d2`, `fcae63d`; D9) |
+| A2 | Alta | Retirada de colorimetría no borra perfiles con `user_overridden` | Comprobado (SQL) | **Corregido** (`fcae63d`; D10) |
+| A3 | Alta | Entradas y resultados de los jobs retenidos por Modal, posible salida de la UE | Comprobado en código; verificar con Modal | **Corregido en código** (`bef27d2`, `fcae63d`, `fa6d6aa`; D11). **Pendiente del usuario:** DPA y residencia UE de Modal |
+| M1 | Media | Prueba de consentimiento escrita por el cliente y archivo D6 que no se puede vincular a nadie | Comprobado (SQL) | **Corregido** (`bef27d2`, `fcae63d`; D13). Pendiente: textos legales definitivos |
+| M2 | Media | Ficheros que aparecen después de la baja o de la retirada y duran hasta ~48 h | Razonado sobre el código | **Corregido** (`fcae63d`; D14) |
+| M3 | Media | Edge Functions sin región fijada | Razonado; verificar en el despliegue | **Pendiente** (necesita el proyecto en la nube); verificación documentada (`ceac63b`) |
+| M4 | Media | La caché de drapeado ignora `measurements_override` | Comprobado en código | **Corregido** (`fcae63d`) |
+| M5 | Media | Jobs de prenda sin consentimiento aunque las fotos pueden mostrar a la persona | Diseño | **Corregido con solución equivalente** (`bef27d2`, `fa6d6aa`, `ceac63b`; D12). Pendiente: control en el pipeline real |
+| M6 | Media | La red de seguridad de 60 min puede fallar en silencio | Comprobado en código | **Corregido** (`fcae63d`). Pendiente: elegir canal de alerta |
+| M7 | Media | Zonas de fit sin medida corporal equivalente | Comprobado en contrato | **Corregido** (`bef27d2`, `ceac63b`) |
+| M8 | Media | Sesgos: validación del avatar pequeña, escalas de piel distintas, captura solo de pie | Diseño | **Corregido en documentación** (`ceac63b`). Pendiente: medidas de miembros opcionales (producto) |
+| B1–B11 | Baja | Ver §3 | — | B1–B11 corregidos salvo B9 parcial (ver §3) |
+
+## Estado de las correcciones (2026-11-11)
+
+Commits: contratos v0.4.0 `bef27d2`, Supabase `fcae63d`, workers `fa6d6aa`, documentación `ceac63b` y este commit (B10 y este informe). Cada hallazgo lleva al final un bloque **Estado** con lo hecho y lo que queda.
+
+Verificación de las correcciones, con Docker y el stack local de Supabase: `supabase db reset` aplica las 13 migraciones; `supabase test db` pasa 204 tests pgTAP (68 nuevos en `04_review_fixes.test.sql`); el e2e pasa sus 7 pasos (despacho en dos pasos, entrega única, subidas revocadas, `jobs` solo con ids, archivo con `email_hash`); `uv run pytest` pasa 77 tests en los workers; `npm test` en contratos, `npx tsc --noEmit` en la app y `deno check`, `deno lint` y `deno fmt --check` en `supabase/` pasan.
 
 ## Cómo se ha comprobado
 
@@ -73,6 +79,8 @@ El peso y el género no tienen otro sitio en el esquema: solo viven en `jobs.inp
 - En `on_consent_withdrawn`, vaciar `input` y `output` de los jobs del tratamiento retirado.
 - Añadir un pgTAP que compruebe que, tras la retirada, no queda ninguna medida en `jobs`.
 
+**Estado: corregido** (`bef27d2`, `fcae63d`; `docs/architecture.md` §7, D9). Al terminar, un trigger reduce `jobs.input` a ids y `jobs.output` a referencias (`JobResult`), para cualquier camino de escritura; `complete_job` ya guarda referencias. La retirada y el borrado de avatar, perfil de color o prenda cancelan los jobs en curso dependientes y quitan sus ids de los terminados. `purge_finished_jobs` borra los terminados con más de 30 días (no antes de borrar sus fotos). `export-data` exporta lo que queda (entrada sin rutas y salida). Tests: `04_review_fixes.test.sql` (A1) y e2e.
+
 ### A2 · Alta · La retirada de la colorimetría conserva el color de piel, pelo e iris si el usuario corrigió la estación
 
 **Dónde**
@@ -93,6 +101,8 @@ El peso y el género no tienen otro sitio en el esquema: solo viven en `jobs.inp
 
 Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measurements_source <> 'manual'` es correcto, siempre que un avatar de foto nunca pueda pasar a `manual`; hoy la app no puede escribir esa columna.
 
+**Estado: corregido** (`fcae63d`; D10). Retirar `color_analysis` borra todos los perfiles de color, también los corregidos a mano; documentado como decisión. Tener estación sin consentimiento exige un perfil manual sin datos medidos (pendiente de producto: hoy `color_profiles` exige el LAB). Test: `04_review_fixes.test.sql` (A2).
+
 ### A3 · Alta (pendiente de verificar con el proveedor) · Modal guarda entradas y resultados de los jobs fuera del contenedor en región UE
 
 **Dónde**
@@ -112,6 +122,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Pasar a la función GPU lo mínimo y sacar del payload lo que no necesita, como el peso o el género, si el pipeline no los usa.
 - Pedir a Modal por escrito la ubicación de su plano de control, de la cola de entradas, del almacén de resultados y de los logs, y su retención. Si no garantiza la UE, activar ya la alternativa prevista (RunPod con centro de datos en la UE) o una cola propia en la que Modal solo reciba un `job_id` y descargue el despacho firmado desde la API.
 - Añadirlo como punto bloqueante a la EIPD.
+
+**Estado: corregido en código** (`bef27d2`, `fcae63d`, `fa6d6aa`; D11). Se aplican las dos medidas: a la cola de Modal solo llega un `JobDispatchNotice` (ids, sin `user_id`, medidas ni URLs) y el contenedor pide el `JobDispatch` a la nueva función `job-dispatch` con petición firmada, que lo entrega una vez por intento y dentro de plazo; la función GPU devuelve `None`, así que Modal no guarda resultados. Tests: pytest (`test_review_fixes.py`), pgTAP y e2e. **Pendiente del usuario:** firmar el DPA con Modal y obtener por escrito la residencia UE y la retención de su plano de control, cola, resultados y logs; si no la garantiza, RunPod UE. Añadido como punto de la EIPD.
 
 ---
 
@@ -138,6 +150,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - En el archivo, guardar además el HMAC del email normalizado, que es lo que aportará quien reclame, con el mismo secreto o con otro.
 - Que un abogado confirme qué identificador es aceptable. El riesgo ya figura como pendiente en `integration-issues.md`.
 
+**Estado: corregido** (`bef27d2`, `fcae63d`; D13). La app solo inserta `purpose` (y `text_version` vigente); fechas y versión las fija el servidor; `consent_texts` versionada con SHA-256, de solo inserción, y clave foránea desde `consents`; una fila de `consents` no se puede reescribir. El archivo guarda `email_hash` y `consent_archive_lookup` busca por email o `user_id`. **Pendiente:** textos legales definitivos (los sembrados son borradores) y que el abogado confirme el identificador.
+
 ### M2 · Media · Ficheros que aparecen después de la baja o de la retirada y duran hasta ~48 h
 
 **Dónde**
@@ -158,6 +172,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Para la retirada del consentimiento, borrar los ficheros del avatar en el mismo flujo (pg_net → `maintenance`) en lugar de esperar a la recogida de huérfanos.
 - Bajar `p_min_age` de `orphaned_assets` a ~2 h, que es la vida de la URL de subida.
 
+**Estado: corregido** (`fcae63d`; D14). Un trigger en `storage.objects` solo admite subidas que un job activo espera, así que la baja (que ahora cancela antes los jobs), la retirada, los borrados y el fin del job invalidan las URLs pendientes; el e2e confirma que Storage lo comprueba al firmar y al subir. GC de `assets` a 10 min, cada 10 min y al borrar avatar o prenda. No hizo falta conservar `user_id` de cuentas borradas.
+
 ### M3 · Media (verificar en el despliegue) · Las Edge Functions no tienen región fijada
 
 **Dónde.** `docs/architecture.md` §4 («Región UE») y `supabase/config.toml:406-424`. Ni la configuración ni el código fijan región de ejecución para las funciones. `create-job`, `job-callback` y `export-data` procesan medidas, URLs firmadas a fotos y la exportación completa.
@@ -168,6 +184,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Confirmar el comportamiento en el proyecto en la nube cuando exista.
 - Fijar la región de ejecución en una de la UE, con la cabecera o la opción de región de invocación que ofrezca Supabase, en la app, en `pg_net` y en el `callback_url`.
 - Añadirlo a la lista de subencargados de la EIPD.
+
+**Estado: pendiente** (necesita el proyecto en la nube). Paso de verificación documentado en `supabase/README.md`, «Verificar la región de ejecución de las Edge Functions» (`ceac63b`).
 
 ### M4 · Media · La clave de caché del drapeado ignora las medidas corregidas por el usuario
 
@@ -184,6 +202,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Incluir en el material de la clave un hash canónico de las medidas efectivas, o recalcular `shape_hash` con un trigger al cambiar `measurements_override`.
 - Invalidar `drape_cache` del avatar en ese mismo trigger.
 - De paso, usar como versión de la prenda `pipeline_version` más un hash de `attributes` en lugar de `updated_at`. Hoy renombrar una prenda invalida su caché y cuesta GPU.
+
+**Estado: corregido** (`fcae63d`). La clave incluye el hash canónico de las medidas efectivas y una versión de la prenda (`pipeline_version`, rutas, `attributes` y medidas de la talla) en lugar de `updated_at`; cambiar `measurements_override` borra además la caché del avatar (trigger). Test: `04_review_fixes.test.sql` (M4).
 
 ### M5 · Media · Los jobs de prenda no piden consentimiento y el recorte se guarda sin comprobar que no queda la persona
 
@@ -202,6 +222,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Si se admiten fotos puestas, declararlo en la información y en la EIPD.
 - Añadir un control en el worker: si el recorte contiene piel o cara (MediaPipe ya está en el stack), rechazar el job con un código propio y no subir el recorte.
 
+**Estado: corregido con una solución equivalente** (`bef27d2`, `fa6d6aa`, `ceac63b`; D12). No se pide consentimiento (sería una base débil para la función principal, art. 7.4, y su retirada borraría el armario): la captura pide la prenda sin persona y el worker debe rechazar fotos con persona (`person_detected`, contrato v0.4.0) sin subir recorte. **Pendiente:** el control solo puede implementarse con el pipeline real de prendas (hoy `not_implemented`); es requisito para activarlo. Que el abogado confirme la base jurídica.
+
 ### M6 · Media · La red de seguridad de 60 minutos puede fallar en silencio
 
 **Dónde**
@@ -216,6 +238,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Una consulta programada en SQL, sin pasar por HTTP: `select count(*) from storage.objects where bucket_id='raw-uploads' and created_at < now() - interval '75 minutes'`. Si da más que cero, una alerta por el canal que se elija (pg_net a un webhook o un monitor externo).
 - Cambiar el `raise warning` por un registro en una tabla de incidencias.
 - Que `create-job` rechace los escaneos (503) si esa comprobación está en rojo, como dice la propia arquitectura.
+
+**Estado: corregido** (`fcae63d`). `ops_alerts` (consultable, solo service_role), `privacy-watchdog` cada 5 min en SQL puro (fotos > 75 min, Vault sin configurar, llamadas a `maintenance` fallidas), `invoke_maintenance` abre alerta en vez de solo avisar, `create-job` responde 503 `scans_paused` con fotos fuera de plazo, y webhook opcional (`ops_alert_webhook_url` en Vault). Tests: `04_review_fixes.test.sql` (M6). **Pendiente del usuario:** elegir el canal de alerta y guardar su URL.
 
 ### M7 · Media · Zonas de fit sin medida corporal equivalente
 
@@ -234,6 +258,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Añadir al contrato `FIT_ZONE_BODY_MEASUREMENT: Record<FitZone, BodyMeasurementKey | null>`.
 - Añadir `knee_cm` y `rise_cm` a `BodyMeasurements`.
 - Documentar qué hace el fit cuando falta la medida de una zona ancla: veredicto `null` y confianza baja.
+
+**Estado: corregido** (`bef27d2`, `ceac63b`). `knee_cm` y `rise_cm` en `BodyMeasurements`; `FIT_ZONE_BODY_MEASUREMENT` como única tabla zona → medida (`hem` sin medida); regla documentada: zona sin medida se omite, sin ancla medible `size_offset` es `null` y la confianza no pasa de 0,5 (`FIT_MAX_CONFIDENCE_WITHOUT_ANCHOR`).
 
 ### M8 · Media · Sesgos de tono de piel y de tipo de cuerpo en el diseño
 
@@ -256,6 +282,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Admitir una pose sentada o una foto asistida como camino alternativo.
 - Hacer opcionales las medidas de miembros en `avatars.measurements`, con el fit tratando la ausencia.
 
+**Estado: corregido en documentación** (`ceac63b`). `avatar.md` y `phase0-plan.md`: 60–70 voluntarios como mínimo, por estrato (≥ 15 por tramo Monk 1–3, 4–6, 7–10 y por tramo de IMC, ≥ 20 por sexo, ≥ 5 sin A-pose de pie), escala Monk en avatar y color, criterio «peor tramo ≤ 1,5 × MAE global», umbral de IoU del segmentador en el peor tramo y capturas sentada y asistida. **Pendiente (producto):** hacer opcionales las medidas de miembros en `avatars.measurements`.
+
 ---
 
 ## 3. Hallazgos bajos
@@ -267,6 +295,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - **Por qué importa poco:** quien tiene la clave de servicio ya lo puede casi todo, pero el comentario y D6 prometen un bloqueo que no existe.
 - **Arreglo:** `revoke execute … from service_role`, o mover la función a `private` y fijar el intervalo dentro sin parámetro.
 
+- **Estado: corregido** (`fcae63d`): `revoke execute … from service_role`; test en `04_review_fixes.test.sql`.
+
 ### B2 · Baja · La app escribe columnas que deberían ser del pipeline o estar validadas
 
 - **Dónde:** `supabase/migrations/20261111000300_rls.sql:104`, `garments.status` es escribible.
@@ -275,11 +305,15 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - **Por qué importa:** ese override pasa a `DrapeJobContext.avatar.measurements` (`dispatch.ts:98`), no valida contra `JobDispatch` y hace que todo drapeado de ese avatar gaste sus intentos y termine en `internal`. Solo afecta al propio usuario.
 - **Arreglo:** quitar `status` del grant de `garments`, o limitar los valores con un trigger, y añadir un `check` o trigger que valide `measurements_override`: solo claves de `BodyMeasurements`, números y rangos plausibles.
 
+- **Estado: corregido** (`fcae63d`): `garments.status` fuera del grant; `measurements_override` validado por `check` (claves de `BodyMeasurements`, números, rangos).
+
 ### B3 · Baja · Defensa contra SSRF incompleta en los workers
 
 - **Dónde:** `services/workers/src/probador_workers/http_client.py:34` y `config.py:58-65`. Si `PROBADOR_ALLOWED_URL_HOSTS` está vacío se acepta cualquier host `https`, y producción no lo exige. Tampoco se rechazan IP privadas ni de enlace local.
 - **Por qué importa poco:** el `JobDispatch` va firmado, así que explotarlo exige el secreto de despacho.
 - **Arreglo:** exigir la lista de hosts en `production` (el host del proyecto de Supabase) y rechazar IP literales y rangos privados.
+
+- **Estado: corregido** (`fa6d6aa`): lista de hosts obligatoria en producción; se rechazan IP literales, `localhost`, `*.local` e `*.internal`. Queda fuera la resolución DNS a IP privadas (rebinding), mitigada por la lista de hosts y la firma.
 
 ### B4 · Baja · Reenvío del despacho y plazos desalineados
 
@@ -290,6 +324,8 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
   - La arquitectura (§3.1) dice que las dos peticiones son idempotentes; en el worker no lo son.
 - **Arreglo:** deduplicar en el endpoint `dispatch` con un `modal.Dict` por `job_id` y `attempt` que viva 10 min, y alinear el timeout de Modal con el plazo de la API (≤ 10 min).
 
+- **Estado: corregido** (`fcae63d`, `fa6d6aa`): timeout de Modal = plazo de la API; el despacho se entrega una vez por intento (D11), así que un aviso reenviado no vuelve a descargar la foto.
+
 ### B5 · Baja · La URL firmada de subida vuelve a servir cuando se borra la foto
 
 - **Dónde:** `supabase/functions/create-job/index.ts:186` y D8 (`docs/architecture.md:385`, «cada ruta admite una sola subida»).
@@ -297,11 +333,15 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - **Cómo se comprobó:** razonando sobre el funcionamiento de las URLs firmadas de Storage, sin ejecutarlo. Se puede confirmar con un caso más en el e2e: subir, borrar y volver a subir con el mismo token.
 - **Arreglo:** usar nombres de fichero de raw-uploads elegidos por la API (`<uid>/<job_id>-<n>.jpg`), no por el cliente, y rechazar en `create-job/uploaded` cualquier objeto cuyo `created_at` sea posterior al cierre del job. O corregir el texto de D8.
 
+- **Estado: corregido** (`fcae63d`, `ceac63b`): el guard de Storage (D14) rechaza la segunda subida cuando el job ya no está en cola (e2e); D8 corregido.
+
 ### B6 · Baja · Validación de entradas incoherente entre la app y la API
 
 - **Dónde:** `apps/app/src/lib/height.ts:2-3` limita la altura a 100–250 cm. El contrato solo exige `minimum: 0` (`Centimeters`), así que la API acepta `height_cm: 0` o `9999`.
 - **Dónde:** `size_label` y `brand` (`GarmentJobInput` y `DrapeJobInput`) no tienen longitud máxima, y la columna `garments.size_label` tampoco.
 - **Arreglo:** `@minimum 50` y `@maximum 260` en `AvatarJobInput.height_cm` y `weight_kg`, y `@maxLength 32` o `80` en las cadenas libres.
+
+- **Estado: corregido** (`bef27d2`, `fcae63d`): altura 50–260, peso 20–350, `size_label` ≤ 32 y `brand` ≤ 80 en el contrato y en `garments`.
 
 ### B7 · Baja · `delete-account` deja el `user_id` en los logs después de la baja
 
@@ -309,11 +349,15 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - **Por qué importa:** es poco, porque el `user_id` es un identificador aleatorio. Pero es el único sitio donde sobrevive y, junto con el secreto de Vault, permite vincular un registro del archivo D6 a ese `user_id` fuera del proceso bloqueado (ver M1).
 - **Arreglo:** registrar el HMAC o un identificador de la petición, no el `user_id`, o documentar la retención de los logs del proveedor.
 
+- **Estado: corregido** (`fcae63d`): `delete-account` registra un id aleatorio de petición, no el `user_id`.
+
 ### B8 · Baja · La cuota de jobs no es atómica
 
 - **Dónde:** `supabase/functions/create-job/index.ts:67-78`: cuenta y después inserta.
 - **Por qué importa:** peticiones concurrentes superan `JOB_DAILY_QUOTA`. Es una cuestión de coste, no de privacidad. La de exportaciones sí usa un bloqueo consultivo (`register_data_export`).
 - **Arreglo:** el mismo patrón que la exportación: una RPC con `pg_advisory_xact_lock` que cuente e inserte en una sola transacción.
+
+- **Estado: corregido** (`fcae63d`): `enqueue_job` con `pg_advisory_xact_lock`. El acierto de caché del drapeado sigue contando sin bloqueo porque no gasta GPU.
 
 ### B9 · Baja · Licencias: dependencias limpias, quedan modelos sin revisar
 
@@ -326,16 +370,22 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - **Backbone de SAM 3D Body.** El backbone DINOv3 que usa uno de los checkpoints de SAM 3D Body puede tener su propia licencia de Meta. Conviene que la revisión legal de la SAM License, que ya está prevista, la incluya.
 - **`smplx` sin guarda.** `body_model` admite `smplx` en la base de datos sin ninguna guarda, así que un avatar SMPL-X podría llegar a producción. Bastaría con que `complete_job` lo rechace mientras no exista licencia.
 
+- **Estado: parcial.** Corregido (`fcae63d`): `complete_job` rechaza `smplx`. **Pendiente** (revisión legal, no se puede hacer en código): licencia de los pesos y datos de FashionCLIP / OpenCLIP y del backbone DINOv3 de SAM 3D Body.
+
 ### B10 · Baja · Un fichero ignorado sigue versionado
 
 - **Dónde:** `supabase/.branches/_current_branch`. Está en `.gitignore`, pero se versionó antes de añadir la regla.
 - **Por qué importa:** solo contiene `main` y no es un secreto. Conviene sacarlo del índice para que nadie dé por hecho que lo ignorado no está en el repositorio.
+
+- **Estado: corregido** en este commit: `git rm --cached supabase/.branches/_current_branch`.
 
 ### B11 · Baja · El embedding se presenta como interno pero el usuario puede leerlo
 
 - **Dónde:** `20261111000200_core_tables.sql:208-212`, comentario de `embedding` («no se sirve a la app»), frente al `grant select on public.garments` de la tabla entera (`20261111000300_rls.sql:103`). El usuario puede leer el embedding de sus prendas.
 - **Exportación:** `export-data` no lo incluye.
 - **Por qué importa poco:** no es un riesgo, porque es un dato suyo. Es una incoherencia: o se excluye por privilegio de columna o se exporta.
+
+- **Estado: corregido** (`bef27d2`, `fcae63d`): se exporta (`DataExport.garment_embeddings`); la app puede seguir leyéndolo porque es un dato suyo.
 
 ---
 
