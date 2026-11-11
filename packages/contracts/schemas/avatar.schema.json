@@ -1,0 +1,304 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "body_model": {
+      "$ref": "#/definitions/BodyModel"
+    },
+    "model_version": {
+      "type": "string",
+      "description": "Versión del modelo corporal y del pipeline, p. ej. `smplx-1.1/avatar-0.3`."
+    },
+    "smplx": {
+      "$ref": "#/definitions/SmplxParams",
+      "description": "Parámetros del modelo corporal (se llaman `smplx` aunque el modelo sea compatible)."
+    },
+    "measurements": {
+      "$ref": "#/definitions/BodyMeasurements"
+    },
+    "measurements_source": {
+      "$ref": "#/definitions/MeasurementSource"
+    },
+    "measurements_override": {
+      "type": "object",
+      "properties": {
+        "height_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Altura declarada por el usuario; ancla la escala del avatar."
+        },
+        "chest_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de pecho en el punto más ancho."
+        },
+        "waist_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cintura natural."
+        },
+        "hip_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cadera en el punto más ancho."
+        },
+        "shoulder_width_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Ancho de hombros, de acromion a acromion por la espalda."
+        },
+        "arm_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de brazo, de acromion a muñeca."
+        },
+        "inseam_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Entrepierna, de la ingle al suelo."
+        },
+        "neck_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "underbust_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "wrist_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "calf_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "torso_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de torso, de la séptima cervical a la cintura."
+        },
+        "weight_kg": {
+          "type": "number",
+          "description": "Peso declarado, opcional; mejora la estimación de forma.",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "Medidas corregidas a mano por el usuario; prevalecen sobre `measurements`."
+    },
+    "glb_url": {
+      "$ref": "#/definitions/Url",
+      "description": "GLB del avatar en `pose`, en metros, Y arriba, pies en el origen."
+    },
+    "pose": {
+      "$ref": "#/definitions/AvatarPose"
+    },
+    "shape_hash": {
+      "type": "string",
+      "description": "Cambia cuando cambia la forma; forma parte de la clave de caché del drapeado."
+    },
+    "confidence": {
+      "$ref": "#/definitions/UnitInterval",
+      "description": "Confianza global de la estimación."
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "updated_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "body_model",
+    "model_version",
+    "smplx",
+    "measurements",
+    "measurements_source",
+    "glb_url",
+    "pose",
+    "shape_hash",
+    "confidence",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "description": "Avatar 3D del usuario. No contiene ni referencia la foto de origen.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "BodyModel": {
+      "type": "string",
+      "enum": [
+        "smplx",
+        "anny"
+      ],
+      "description": "Modelo corporal paramétrico. `anny` es la alternativa de licencia abierta."
+    },
+    "SmplxParams": {
+      "type": "object",
+      "properties": {
+        "gender": {
+          "$ref": "#/definitions/BodyModelGender"
+        },
+        "betas": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Coeficientes de forma.",
+          "minItems": 10,
+          "maxItems": 300
+        },
+        "body_pose": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Pose corporal en eje-ángulo, 21 articulaciones × 3. Opcional.",
+          "minItems": 63,
+          "maxItems": 63
+        },
+        "expression": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Coeficientes de expresión facial. Opcional.",
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "gender",
+        "betas"
+      ],
+      "additionalProperties": false,
+      "description": "Parámetros del modelo corporal. Con `betas` y `gender` basta para reconstruir la forma; la pose de la foto se descarta y el avatar se entrega en la pose canónica."
+    },
+    "BodyModelGender": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "female",
+        "male"
+      ]
+    },
+    "BodyMeasurements": {
+      "type": "object",
+      "properties": {
+        "height_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Altura declarada por el usuario; ancla la escala del avatar."
+        },
+        "chest_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de pecho en el punto más ancho."
+        },
+        "waist_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cintura natural."
+        },
+        "hip_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cadera en el punto más ancho."
+        },
+        "shoulder_width_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Ancho de hombros, de acromion a acromion por la espalda."
+        },
+        "arm_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de brazo, de acromion a muñeca."
+        },
+        "inseam_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Entrepierna, de la ingle al suelo."
+        },
+        "neck_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "underbust_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "wrist_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "calf_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "torso_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de torso, de la séptima cervical a la cintura."
+        },
+        "weight_kg": {
+          "type": "number",
+          "description": "Peso declarado, opcional; mejora la estimación de forma.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "height_cm",
+        "chest_cm",
+        "waist_cm",
+        "hip_cm",
+        "shoulder_width_cm",
+        "arm_length_cm",
+        "inseam_cm"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas del cuerpo en cm. Los contornos son perímetros completos. Las obligatorias son las que el fit del MVP necesita; el resto depende del método de medición."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "MeasurementSource": {
+      "type": "string",
+      "enum": [
+        "photo",
+        "photo_reference_object",
+        "lidar",
+        "manual"
+      ],
+      "description": "Cómo se obtuvieron las medidas."
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "format": "uri"
+    },
+    "AvatarPose": {
+      "type": "string",
+      "enum": [
+        "a_pose",
+        "t_pose",
+        "relaxed"
+      ]
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/avatar.schema.json",
+  "title": "Avatar"
+}

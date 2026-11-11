@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "avatar"
+        },
+        "input": {
+          "$ref": "#/definitions/AvatarJobInput"
+        }
+      },
+      "required": [
+        "type",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "garment"
+        },
+        "input": {
+          "$ref": "#/definitions/GarmentJobInput"
+        }
+      },
+      "required": [
+        "type",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "drape"
+        },
+        "input": {
+          "$ref": "#/definitions/DrapeJobInput"
+        }
+      },
+      "required": [
+        "type",
+        "input"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "color"
+        },
+        "input": {
+          "$ref": "#/definitions/ColorJobInput"
+        }
+      },
+      "required": [
+        "type",
+        "input"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "description": "Cuerpo de `POST /functions/v1/jobs`: lo que la app envía para crear un job.",
+  "definitions": {
+    "AvatarJobInput": {
+      "type": "object",
+      "properties": {
+        "photo_path": {
+          "$ref": "#/definitions/StoragePath",
+          "description": "Foto de cuerpo entero en el bucket efímero. Se borra al terminar el job."
+        },
+        "height_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "weight_kg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gender": {
+          "$ref": "#/definitions/BodyModelGender"
+        },
+        "consent_id": {
+          "$ref": "#/definitions/UUID",
+          "description": "Consentimiento vigente que ampara este tratamiento."
+        }
+      },
+      "required": [
+        "photo_path",
+        "height_cm",
+        "consent_id"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `avatar`."
+    },
+    "StoragePath": {
+      "type": "string",
+      "description": "Ruta de un objeto en Storage, `bucket/carpeta/fichero`.",
+      "minLength": 3
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "BodyModelGender": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "female",
+        "male"
+      ]
+    },
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "GarmentJobInput": {
+      "type": "object",
+      "properties": {
+        "garment_id": {
+          "$ref": "#/definitions/UUID",
+          "description": "Prenda ya creada con `status: processing` que este job rellena."
+        },
+        "image_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StoragePath"
+          },
+          "description": "Fotos de la prenda en el bucket efímero.",
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "category_hint": {
+          "$ref": "#/definitions/GarmentCategory"
+        },
+        "size_label": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "garment_id",
+        "image_paths"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `garment`."
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
+      ]
+    },
+    "DrapeJobInput": {
+      "type": "object",
+      "properties": {
+        "avatar_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "size_label": {
+          "type": "string"
+        },
+        "pose": {
+          "$ref": "#/definitions/AvatarPose"
+        },
+        "quality": {
+          "$ref": "#/definitions/DrapeQuality"
+        }
+      },
+      "required": [
+        "avatar_id",
+        "garment_id",
+        "size_label",
+        "pose",
+        "quality"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `drape`."
+    },
+    "AvatarPose": {
+      "type": "string",
+      "enum": [
+        "a_pose",
+        "t_pose",
+        "relaxed"
+      ]
+    },
+    "DrapeQuality": {
+      "type": "string",
+      "enum": [
+        "preview",
+        "final"
+      ]
+    },
+    "ColorJobInput": {
+      "type": "object",
+      "properties": {
+        "selfie_path": {
+          "$ref": "#/definitions/StoragePath",
+          "description": "Selfie en el bucket efímero. Se borra al terminar el job."
+        },
+        "white_reference": {
+          "$ref": "#/definitions/WhiteReference"
+        },
+        "consent_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "selfie_path",
+        "white_reference",
+        "consent_id"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `color`."
+    },
+    "WhiteReference": {
+      "type": "string",
+      "enum": [
+        "paper",
+        "gray_card",
+        "none"
+      ]
+    }
+  },
+  "$id": "https://probador.app/schemas/create_job_request.schema.json",
+  "title": "CreateJobRequest"
+}

@@ -1,0 +1,52 @@
+-- Utilidades para los tests pgTAP (se incluyen con \ir desde cada test).
+-- `supabase test db` ejecuta cada fichero en una transacción que se deshace al
+-- final, así que todo lo creado aquí es temporal.
+
+create extension if not exists pgtap with schema extensions;
+
+create or replace function pg_temp.create_user(p_id uuid, p_email text)
+returns uuid language sql as $$
+  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at,
+                          raw_app_meta_data, raw_user_meta_data)
+  values (p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', p_email, '',
+          now(), now(), '{}', '{}')
+  returning id;
+$$;
+
+-- Actuar como un usuario autenticado (mismo mecanismo que PostgREST).
+create or replace function pg_temp.login_as(p_id uuid)
+returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', p_id, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+end;
+$$;
+
+create or replace function pg_temp.login_anon()
+returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  execute 'set local role anon';
+end;
+$$;
+
+create or replace function pg_temp.logout()
+returns void language plpgsql as $$
+begin
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+end;
+$$;
+
+-- Avatar mínimo válido según el contrato (como jsonb de AvatarJobOutput.avatar).
+create or replace function pg_temp.avatar_json(p_id uuid, p_user uuid, p_glb text)
+returns jsonb language sql as $$
+  select jsonb_build_object(
+    'id', p_id, 'user_id', p_user, 'body_model', 'smplx', 'model_version', 'smplx-1.1/avatar-0.1',
+    'smplx', jsonb_build_object('gender', 'neutral', 'betas', '[0,0,0,0,0,0,0,0,0,0]'::jsonb),
+    'measurements', jsonb_build_object('height_cm', 172, 'chest_cm', 96, 'waist_cm', 80, 'hip_cm', 98,
+                                       'shoulder_width_cm', 44, 'arm_length_cm', 60, 'inseam_cm', 80),
+    'measurements_source', 'photo', 'glb_url', p_glb, 'pose', 'a_pose', 'shape_hash', 'shape-' || p_user,
+    'confidence', 0.8, 'created_at', '2026-11-11T10:00:00Z', 'updated_at', '2026-11-11T10:00:00Z');
+$$;

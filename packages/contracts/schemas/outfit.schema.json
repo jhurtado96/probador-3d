@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "avatar_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "name": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/OutfitItem"
+      },
+      "minItems": 1
+    },
+    "source": {
+      "$ref": "#/definitions/OutfitSource"
+    },
+    "scores": {
+      "$ref": "#/definitions/OutfitScores"
+    },
+    "occasion": {
+      "type": "string"
+    },
+    "preview_url": {
+      "$ref": "#/definitions/Url",
+      "description": "Miniatura renderizada del outfit."
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "updated_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "avatar_id",
+    "items",
+    "source",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "OutfitItem": {
+      "type": "object",
+      "properties": {
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "size_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layer": {
+          "type": "integer",
+          "description": "Orden de capa: 0 es la más pegada al cuerpo.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "garment_id",
+        "size_label",
+        "layer"
+      ],
+      "additionalProperties": false
+    },
+    "OutfitSource": {
+      "type": "string",
+      "enum": [
+        "user",
+        "recommendation",
+        "stylist"
+      ]
+    },
+    "OutfitScores": {
+      "type": "object",
+      "properties": {
+        "compatibility": {
+          "$ref": "#/definitions/UnitInterval"
+        },
+        "color": {
+          "$ref": "#/definitions/UnitInterval"
+        },
+        "fit": {
+          "$ref": "#/definitions/UnitInterval"
+        },
+        "total": {
+          "$ref": "#/definitions/UnitInterval"
+        }
+      },
+      "required": [
+        "compatibility",
+        "color",
+        "fit",
+        "total"
+      ],
+      "additionalProperties": false,
+      "description": "Ranking = 0,4 compatibilidad + 0,3 color + 0,3 ajuste."
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "format": "uri"
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/outfit.schema.json",
+  "title": "Outfit"
+}

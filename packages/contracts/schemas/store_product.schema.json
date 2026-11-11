@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "network": {
+      "$ref": "#/definitions/AffiliateNetwork"
+    },
+    "merchant": {
+      "type": "string"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Identificador del producto en el feed."
+    },
+    "title": {
+      "type": "string"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "category": {
+      "$ref": "#/definitions/GarmentCategory"
+    },
+    "target_gender": {
+      "$ref": "#/definitions/TargetGender"
+    },
+    "affiliate_url": {
+      "$ref": "#/definitions/Url",
+      "description": "Enlace con seguimiento de afiliación; es el que abre la app."
+    },
+    "image_urls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Url"
+      },
+      "minItems": 1
+    },
+    "price": {
+      "$ref": "#/definitions/Money"
+    },
+    "sale_price": {
+      "$ref": "#/definitions/Money",
+      "description": "Precio rebajado, si lo hay."
+    },
+    "sizes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/StoreProductSize"
+      }
+    },
+    "garment_id": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/UUID"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Prenda normalizada (3D, colores, medidas) creada por el mismo pipeline; `null` si aún no se procesó."
+    },
+    "last_seen_at": {
+      "$ref": "#/definitions/ISODateTime",
+      "description": "Última vez que se vio en el feed."
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "updated_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "network",
+    "merchant",
+    "external_id",
+    "title",
+    "category",
+    "affiliate_url",
+    "image_urls",
+    "price",
+    "sizes",
+    "garment_id",
+    "last_seen_at",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "description": "Producto de un feed de afiliación, ya normalizado.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "AffiliateNetwork": {
+      "type": "string",
+      "enum": [
+        "awin",
+        "rakuten",
+        "cj",
+        "impact",
+        "zalando",
+        "shopify"
+      ]
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
+      ]
+    },
+    "TargetGender": {
+      "type": "string",
+      "enum": [
+        "women",
+        "men",
+        "unisex",
+        "kids"
+      ]
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "format": "uri"
+    },
+    "Money": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217.",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "StoreProductSize": {
+      "type": "object",
+      "properties": {
+        "size_label": {
+          "type": "string"
+        },
+        "in_stock": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "size_label",
+        "in_stock"
+      ],
+      "additionalProperties": false
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/store_product.schema.json",
+  "title": "StoreProduct"
+}

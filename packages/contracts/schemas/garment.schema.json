@@ -1,0 +1,413 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/UUID"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Dueño. `null` en prendas de catálogo de tienda."
+    },
+    "store_product_id": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/UUID"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Producto de tienda del que procede, si lo hay."
+    },
+    "status": {
+      "$ref": "#/definitions/GarmentStatus"
+    },
+    "category": {
+      "$ref": "#/definitions/GarmentCategory"
+    },
+    "name": {
+      "type": "string"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "attributes": {
+      "$ref": "#/definitions/GarmentAttributes"
+    },
+    "colors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GarmentColor"
+      },
+      "description": "Colores dominantes, de mayor a menor proporción.",
+      "minItems": 1
+    },
+    "design_fit": {
+      "$ref": "#/definitions/DesignFit"
+    },
+    "size_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Talla que tiene el usuario (armario) o `null` si es de catálogo."
+    },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GarmentSizeMeasurements"
+      },
+      "description": "Medidas por talla; en el armario suele haber una sola."
+    },
+    "level": {
+      "$ref": "#/definitions/GarmentLevel"
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Plantilla paramétrica usada (nivel 1)."
+    },
+    "image_url": {
+      "$ref": "#/definitions/Url",
+      "description": "Recorte de la prenda sin fondo ni persona. La foto original no se conserva."
+    },
+    "glb_url": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Url"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "GLB de la prenda en reposo; `null` mientras `status` es `processing`."
+    },
+    "user_corrected_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
+    },
+    "pipeline_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "updated_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "status",
+    "category",
+    "attributes",
+    "colors",
+    "design_fit",
+    "size_label",
+    "measurements",
+    "level",
+    "image_url",
+    "glb_url",
+    "pipeline_version",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "description": "Prenda del armario del usuario o normalizada desde un producto de tienda.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "GarmentStatus": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "ready",
+        "failed"
+      ]
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
+      ]
+    },
+    "GarmentAttributes": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "$ref": "#/definitions/GarmentPattern"
+        },
+        "material": {
+          "type": "string",
+          "description": "Material principal en texto libre normalizado: `cotton`, `denim`, `wool`."
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/SleeveLength"
+        },
+        "neckline": {
+          "type": "string",
+          "description": "`crew`, `v`, `collar`, `hood`…"
+        },
+        "length": {
+          "$ref": "#/definitions/GarmentLength"
+        },
+        "seasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Estaciones del año: `summer`, `winter`…"
+        },
+        "formality": {
+          "type": "string",
+          "description": "`casual`, `smart`, `formal`, `sport`."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Etiquetas libres."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Atributos del etiquetado automático; todos corregibles por el usuario."
+    },
+    "GarmentPattern": {
+      "type": "string",
+      "enum": [
+        "solid",
+        "stripes",
+        "checks",
+        "floral",
+        "print",
+        "graphic",
+        "other"
+      ]
+    },
+    "SleeveLength": {
+      "type": "string",
+      "enum": [
+        "sleeveless",
+        "short",
+        "three_quarter",
+        "long"
+      ]
+    },
+    "GarmentLength": {
+      "type": "string",
+      "enum": [
+        "cropped",
+        "regular",
+        "long",
+        "mini",
+        "midi",
+        "maxi"
+      ]
+    },
+    "GarmentColor": {
+      "type": "object",
+      "properties": {
+        "lab": {
+          "$ref": "#/definitions/LabColor"
+        },
+        "hex": {
+          "$ref": "#/definitions/HexColor",
+          "description": "El mismo color en hex, para pintarlo."
+        },
+        "proportion": {
+          "$ref": "#/definitions/UnitInterval",
+          "description": "Fracción de la superficie visible que ocupa."
+        },
+        "name": {
+          "type": "string",
+          "description": "Nombre legible, p. ej. `azul marino`."
+        },
+        "near_face": {
+          "type": "boolean",
+          "description": "`true` si queda cerca de la cara (cuello, parte alta); pesa más en colorimetría."
+        }
+      },
+      "required": [
+        "lab",
+        "hex",
+        "proportion"
+      ],
+      "additionalProperties": false,
+      "description": "Un color dominante de la prenda."
+    },
+    "LabColor": {
+      "type": "object",
+      "properties": {
+        "l": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "a": {
+          "type": "number",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "b": {
+          "type": "number",
+          "minimum": -128,
+          "maximum": 127
+        }
+      },
+      "required": [
+        "l",
+        "a",
+        "b"
+      ],
+      "additionalProperties": false,
+      "description": "Color CIELAB (iluminante D65, observador 2°)."
+    },
+    "HexColor": {
+      "type": "string",
+      "description": "Color sRGB en hexadecimal, `#RRGGBB`.",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "DesignFit": {
+      "type": "string",
+      "enum": [
+        "slim",
+        "regular",
+        "relaxed",
+        "oversize"
+      ],
+      "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
+    },
+    "GarmentSizeMeasurements": {
+      "type": "object",
+      "properties": {
+        "size_label": {
+          "type": "string",
+          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+        },
+        "zones": {
+          "$ref": "#/definitions/ZoneMeasurements"
+        },
+        "source": {
+          "$ref": "#/definitions/GarmentMeasurementSource"
+        }
+      },
+      "required": [
+        "size_label",
+        "zones",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
+    },
+    "ZoneMeasurements": {
+      "type": "object",
+      "properties": {
+        "neck": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "shoulder": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "chest": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "waist": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hip": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "body_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "inseam": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "rise": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hem": {
+          "$ref": "#/definitions/Centimeters"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Medidas de una prenda por zona, en cm."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "GarmentMeasurementSource": {
+      "type": "string",
+      "enum": [
+        "brand_size_chart",
+        "photo_reference_object",
+        "lidar",
+        "manual",
+        "estimated"
+      ]
+    },
+    "GarmentLevel": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3
+      ],
+      "description": "1 = plantilla paramétrica + textura; 2 = patrón desde foto; 3 = 3D nativo de marca."
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "format": "uri"
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/garment.schema.json",
+  "title": "Garment"
+}

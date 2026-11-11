@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "height_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Altura declarada por el usuario; ancla la escala del avatar."
+    },
+    "chest_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Contorno de pecho en el punto más ancho."
+    },
+    "waist_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Contorno de cintura natural."
+    },
+    "hip_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Contorno de cadera en el punto más ancho."
+    },
+    "shoulder_width_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Ancho de hombros, de acromion a acromion por la espalda."
+    },
+    "arm_length_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Largo de brazo, de acromion a muñeca."
+    },
+    "inseam_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Entrepierna, de la ingle al suelo."
+    },
+    "neck_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "underbust_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "bicep_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "wrist_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "thigh_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "calf_cm": {
+      "$ref": "#/definitions/Centimeters"
+    },
+    "torso_length_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Largo de torso, de la séptima cervical a la cintura."
+    },
+    "weight_kg": {
+      "type": "number",
+      "description": "Peso declarado, opcional; mejora la estimación de forma.",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "height_cm",
+    "chest_cm",
+    "waist_cm",
+    "hip_cm",
+    "shoulder_width_cm",
+    "arm_length_cm",
+    "inseam_cm"
+  ],
+  "additionalProperties": false,
+  "description": "Medidas del cuerpo en cm. Los contornos son perímetros completos. Las obligatorias son las que el fit del MVP necesita; el resto depende del método de medición.",
+  "definitions": {
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    }
+  },
+  "$id": "https://probador.app/schemas/body_measurements.schema.json",
+  "title": "BodyMeasurements"
+}

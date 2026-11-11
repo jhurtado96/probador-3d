@@ -1,0 +1,181 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "avatar_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "garment_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "size_label": {
+      "type": "string"
+    },
+    "zones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ZoneFit"
+      },
+      "minItems": 1
+    },
+    "verdict": {
+      "$ref": "#/definitions/FitVerdict"
+    },
+    "effective_fit": {
+      "$ref": "#/definitions/DesignFit",
+      "description": "Cómo queda de verdad en este cuerpo, que puede no coincidir con `design_fit`."
+    },
+    "matches_design_fit": {
+      "type": "boolean",
+      "description": "`false` cuando, p. ej., un oversize de diseño queda regular o una talla mayor finge oversize."
+    },
+    "score": {
+      "$ref": "#/definitions/UnitInterval",
+      "description": "Ajuste respecto a las preferencias del usuario; entra en el ranking con peso 0,3."
+    },
+    "recommended_size_label": {
+      "type": "string",
+      "description": "Talla recomendada si no es `size_label`."
+    },
+    "method": {
+      "$ref": "#/definitions/FitMethod"
+    },
+    "confidence": {
+      "$ref": "#/definitions/UnitInterval"
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "avatar_id",
+    "garment_id",
+    "size_label",
+    "zones",
+    "verdict",
+    "effective_fit",
+    "matches_design_fit",
+    "score",
+    "method",
+    "confidence",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "description": "Resultado de ajuste de una prenda y talla sobre un avatar.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "ZoneFit": {
+      "type": "object",
+      "properties": {
+        "zone": {
+          "$ref": "#/definitions/FitZone"
+        },
+        "body_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "garment_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "ease_cm": {
+          "type": "number",
+          "description": "`garment_cm − body_cm`; negativo si la prenda es más pequeña que el cuerpo."
+        },
+        "verdict": {
+          "$ref": "#/definitions/ZoneVerdict"
+        }
+      },
+      "required": [
+        "zone",
+        "body_cm",
+        "garment_cm",
+        "ease_cm",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "description": "Holgura en una zona: medida de la prenda menos medida del cuerpo."
+    },
+    "FitZone": {
+      "type": "string",
+      "enum": [
+        "neck",
+        "shoulder",
+        "chest",
+        "waist",
+        "hip",
+        "sleeve_length",
+        "bicep",
+        "body_length",
+        "thigh",
+        "inseam",
+        "rise",
+        "hem"
+      ],
+      "description": "Zona de medida compartida entre prenda y fit. En contornos (`chest`, `waist`, `hip`, `neck`, `bicep`, `thigh`, `hem`) la medida de la prenda es el perímetro completo, no el ancho en plano."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "ZoneVerdict": {
+      "type": "string",
+      "enum": [
+        "too_tight",
+        "snug",
+        "ideal",
+        "loose",
+        "too_loose",
+        "too_short",
+        "too_long"
+      ]
+    },
+    "FitVerdict": {
+      "type": "string",
+      "enum": [
+        "too_small",
+        "fits",
+        "too_large"
+      ],
+      "description": "Veredicto global de la talla sobre este cuerpo."
+    },
+    "DesignFit": {
+      "type": "string",
+      "enum": [
+        "slim",
+        "regular",
+        "relaxed",
+        "oversize"
+      ],
+      "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "FitMethod": {
+      "type": "string",
+      "enum": [
+        "size_chart",
+        "measured",
+        "simulated"
+      ]
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/fit_result.schema.json",
+  "title": "FitResult"
+}

@@ -1,0 +1,291 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "season": {
+      "$ref": "#/definitions/ColorSeason"
+    },
+    "undertone": {
+      "$ref": "#/definitions/Undertone"
+    },
+    "value": {
+      "$ref": "#/definitions/ColorValue"
+    },
+    "intensity": {
+      "$ref": "#/definitions/ColorIntensity"
+    },
+    "contrast": {
+      "$ref": "#/definitions/ContrastLevel"
+    },
+    "scores": {
+      "$ref": "#/definitions/ColorScores"
+    },
+    "skin_lab": {
+      "$ref": "#/definitions/LabColor",
+      "description": "Colores medidos tras corregir con la referencia de blanco."
+    },
+    "hair_lab": {
+      "$ref": "#/definitions/LabColor"
+    },
+    "eye_lab": {
+      "$ref": "#/definitions/LabColor"
+    },
+    "palettes": {
+      "$ref": "#/definitions/ColorPalettes"
+    },
+    "metal": {
+      "$ref": "#/definitions/Metal"
+    },
+    "confidence": {
+      "$ref": "#/definitions/UnitInterval",
+      "description": "Confianza de `season`."
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SeasonCandidate"
+      },
+      "description": "Otras estaciones plausibles, de mayor a menor confianza."
+    },
+    "white_balanced": {
+      "type": "boolean",
+      "description": "Si hubo referencia de blanco válida; sin ella la confianza baja."
+    },
+    "user_overridden": {
+      "type": "boolean",
+      "description": "`true` si el usuario eligió la estación a mano."
+    },
+    "pipeline_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "season",
+    "undertone",
+    "value",
+    "intensity",
+    "contrast",
+    "scores",
+    "skin_lab",
+    "palettes",
+    "metal",
+    "confidence",
+    "white_balanced",
+    "pipeline_version",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "description": "Perfil de color del usuario. Solo valores calculados: el selfie se borra.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "ColorSeason": {
+      "type": "string",
+      "enum": [
+        "light_spring",
+        "warm_spring",
+        "bright_spring",
+        "light_summer",
+        "cool_summer",
+        "soft_summer",
+        "soft_autumn",
+        "warm_autumn",
+        "deep_autumn",
+        "deep_winter",
+        "cool_winter",
+        "bright_winter"
+      ],
+      "description": "Las 12 estaciones."
+    },
+    "Undertone": {
+      "type": "string",
+      "enum": [
+        "cool",
+        "neutral",
+        "warm",
+        "olive"
+      ]
+    },
+    "ColorValue": {
+      "type": "string",
+      "enum": [
+        "light",
+        "medium",
+        "deep"
+      ],
+      "description": "Valor: claridad global de piel, pelo y ojos."
+    },
+    "ColorIntensity": {
+      "type": "string",
+      "enum": [
+        "soft",
+        "medium",
+        "bright"
+      ],
+      "description": "Intensidad (croma)."
+    },
+    "ContrastLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "ColorScores": {
+      "type": "object",
+      "properties": {
+        "undertone": {
+          "type": "number",
+          "description": "−1 = frío, +1 = cálido.",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "value": {
+          "$ref": "#/definitions/UnitInterval",
+          "description": "0 = profundo, 1 = claro."
+        },
+        "intensity": {
+          "$ref": "#/definitions/UnitInterval",
+          "description": "0 = suave, 1 = brillante."
+        },
+        "contrast": {
+          "$ref": "#/definitions/UnitInterval",
+          "description": "0 = bajo, 1 = alto."
+        }
+      },
+      "required": [
+        "undertone",
+        "value",
+        "intensity",
+        "contrast"
+      ],
+      "additionalProperties": false,
+      "description": "Valores continuos de los que salen las categorías; sirven para explicar el resultado."
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "LabColor": {
+      "type": "object",
+      "properties": {
+        "l": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "a": {
+          "type": "number",
+          "minimum": -128,
+          "maximum": 127
+        },
+        "b": {
+          "type": "number",
+          "minimum": -128,
+          "maximum": 127
+        }
+      },
+      "required": [
+        "l",
+        "a",
+        "b"
+      ],
+      "additionalProperties": false,
+      "description": "Color CIELAB (iluminante D65, observador 2°)."
+    },
+    "ColorPalettes": {
+      "type": "object",
+      "properties": {
+        "best": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HexColor"
+          },
+          "description": "Colores que más favorecen.",
+          "minItems": 1
+        },
+        "neutrals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HexColor"
+          }
+        },
+        "accents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HexColor"
+          }
+        },
+        "avoid": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HexColor"
+          },
+          "description": "Colores a evitar cerca de la cara."
+        }
+      },
+      "required": [
+        "best",
+        "neutrals",
+        "accents",
+        "avoid"
+      ],
+      "additionalProperties": false,
+      "description": "Paletas recomendadas, en hex para pintarlas tal cual."
+    },
+    "HexColor": {
+      "type": "string",
+      "description": "Color sRGB en hexadecimal, `#RRGGBB`.",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "Metal": {
+      "type": "string",
+      "enum": [
+        "gold",
+        "silver",
+        "rose_gold",
+        "any"
+      ]
+    },
+    "SeasonCandidate": {
+      "type": "object",
+      "properties": {
+        "season": {
+          "$ref": "#/definitions/ColorSeason"
+        },
+        "confidence": {
+          "$ref": "#/definitions/UnitInterval"
+        }
+      },
+      "required": [
+        "season",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/color_profile.schema.json",
+  "title": "ColorProfile"
+}

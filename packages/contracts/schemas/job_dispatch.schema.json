@@ -1,0 +1,278 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "type": {
+      "$ref": "#/definitions/JobType"
+    },
+    "input": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AvatarJobInput"
+        },
+        {
+          "$ref": "#/definitions/GarmentJobInput"
+        },
+        {
+          "$ref": "#/definitions/DrapeJobInput"
+        },
+        {
+          "$ref": "#/definitions/ColorJobInput"
+        }
+      ]
+    },
+    "input_urls": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/Url"
+      },
+      "description": "URLs firmadas de descarga, una por cada ruta de entrada, indexadas por ruta."
+    },
+    "output_uploads": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SignedUpload"
+      },
+      "description": "URLs firmadas donde subir los artefactos de salida."
+    },
+    "callback_url": {
+      "$ref": "#/definitions/Url",
+      "description": "Endpoint al que el worker informa del progreso y del resultado."
+    },
+    "attempt": {
+      "type": "integer",
+      "description": "Intento actual, empezando en 1.",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "job_id",
+    "type",
+    "input",
+    "input_urls",
+    "output_uploads",
+    "callback_url",
+    "attempt"
+  ],
+  "additionalProperties": false,
+  "description": "Lo que la API envía al worker al despachar un job. El worker no recibe credenciales de la base de datos: solo URLs firmadas de vida corta.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "JobType": {
+      "type": "string",
+      "enum": [
+        "avatar",
+        "garment",
+        "drape",
+        "color"
+      ]
+    },
+    "AvatarJobInput": {
+      "type": "object",
+      "properties": {
+        "photo_path": {
+          "$ref": "#/definitions/StoragePath",
+          "description": "Foto de cuerpo entero en el bucket efímero. Se borra al terminar el job."
+        },
+        "height_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "weight_kg": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gender": {
+          "$ref": "#/definitions/BodyModelGender"
+        },
+        "consent_id": {
+          "$ref": "#/definitions/UUID",
+          "description": "Consentimiento vigente que ampara este tratamiento."
+        }
+      },
+      "required": [
+        "photo_path",
+        "height_cm",
+        "consent_id"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `avatar`."
+    },
+    "StoragePath": {
+      "type": "string",
+      "description": "Ruta de un objeto en Storage, `bucket/carpeta/fichero`.",
+      "minLength": 3
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "BodyModelGender": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "female",
+        "male"
+      ]
+    },
+    "GarmentJobInput": {
+      "type": "object",
+      "properties": {
+        "garment_id": {
+          "$ref": "#/definitions/UUID",
+          "description": "Prenda ya creada con `status: processing` que este job rellena."
+        },
+        "image_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StoragePath"
+          },
+          "description": "Fotos de la prenda en el bucket efímero.",
+          "minItems": 1,
+          "maxItems": 6
+        },
+        "category_hint": {
+          "$ref": "#/definitions/GarmentCategory"
+        },
+        "size_label": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "garment_id",
+        "image_paths"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `garment`."
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
+      ]
+    },
+    "DrapeJobInput": {
+      "type": "object",
+      "properties": {
+        "avatar_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "size_label": {
+          "type": "string"
+        },
+        "pose": {
+          "$ref": "#/definitions/AvatarPose"
+        },
+        "quality": {
+          "$ref": "#/definitions/DrapeQuality"
+        }
+      },
+      "required": [
+        "avatar_id",
+        "garment_id",
+        "size_label",
+        "pose",
+        "quality"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `drape`."
+    },
+    "AvatarPose": {
+      "type": "string",
+      "enum": [
+        "a_pose",
+        "t_pose",
+        "relaxed"
+      ]
+    },
+    "DrapeQuality": {
+      "type": "string",
+      "enum": [
+        "preview",
+        "final"
+      ]
+    },
+    "ColorJobInput": {
+      "type": "object",
+      "properties": {
+        "selfie_path": {
+          "$ref": "#/definitions/StoragePath",
+          "description": "Selfie en el bucket efímero. Se borra al terminar el job."
+        },
+        "white_reference": {
+          "$ref": "#/definitions/WhiteReference"
+        },
+        "consent_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "selfie_path",
+        "white_reference",
+        "consent_id"
+      ],
+      "additionalProperties": false,
+      "description": "Entrada del job `color`."
+    },
+    "WhiteReference": {
+      "type": "string",
+      "enum": [
+        "paper",
+        "gray_card",
+        "none"
+      ]
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "format": "uri"
+    },
+    "SignedUpload": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Nombre lógico del artefacto: `glb`, `image`, `preview`."
+        },
+        "path": {
+          "$ref": "#/definitions/StoragePath"
+        },
+        "upload_url": {
+          "$ref": "#/definitions/Url"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "upload_url"
+      ],
+      "additionalProperties": false,
+      "description": "Una URL firmada de subida que la API entrega al worker para un artefacto de salida."
+    }
+  },
+  "$id": "https://probador.app/schemas/job_dispatch.schema.json",
+  "title": "JobDispatch"
+}
