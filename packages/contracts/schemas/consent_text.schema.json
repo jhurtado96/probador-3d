@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "purpose": {
+      "$ref": "#/definitions/ConsentPurpose"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "body": {
+      "type": "string",
+      "description": "Texto íntegro, tal como se mostró."
+    },
+    "sha256": {
+      "type": "string",
+      "description": "SHA-256 de `body` en hex: prueba de qué texto exacto se aceptó."
+    },
+    "published_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "purpose",
+    "version",
+    "body",
+    "sha256",
+    "published_at"
+  ],
+  "additionalProperties": false,
+  "description": "Texto legal de un consentimiento (tabla `consent_texts`, solo de lectura y sin borrado: cada cambio es una versión nueva). La app muestra `body` y registra el consentimiento con `purpose` y, opcionalmente, `version`; la versión vigente es la última publicada de cada tratamiento.",
+  "definitions": {
+    "ConsentPurpose": {
+      "type": "string",
+      "enum": [
+        "body_scan",
+        "color_analysis",
+        "personalization",
+        "analytics"
+      ],
+      "description": "Tratamiento que ampara el consentimiento (`docs/architecture.md` §4)."
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/consent_text.schema.json",
+  "title": "ConsentText"
+}

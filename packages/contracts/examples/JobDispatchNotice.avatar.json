@@ -1,0 +1,7 @@
+{
+  "job_id": "3a9d8c7b-6e5f-4a3b-9c2d-1e0f9a8b7c6d",
+  "type": "avatar",
+  "attempt": 1,
+  "dispatch_url": "https://example.supabase.co/functions/v1/job-dispatch",
+  "contracts_version": "0.4.0"
+}

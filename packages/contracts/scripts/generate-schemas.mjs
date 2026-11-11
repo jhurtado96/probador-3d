@@ -28,7 +28,10 @@ const TYPES = [
   "Job",
   "CreateJobRequest",
   "JobDispatch",
+  "JobDispatchNotice",
+  "JobDispatchFetch",
   "JobCallback",
+  "ConsentText",
   "DataExport",
 ];
 

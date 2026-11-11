@@ -72,6 +72,12 @@
             },
             "torso_length_cm": {
               "$ref": "#/definitions/Centimeters"
+            },
+            "knee_cm": {
+              "$ref": "#/definitions/Centimeters"
+            },
+            "rise_cm": {
+              "$ref": "#/definitions/Centimeters"
             }
           },
           "additionalProperties": false
@@ -136,6 +142,14 @@
             "torso_length_cm": {
               "$ref": "#/definitions/Centimeters",
               "description": "Largo de torso, de la séptima cervical a la cintura."
+            },
+            "knee_cm": {
+              "$ref": "#/definitions/Centimeters",
+              "description": "Contorno de rodilla (zona de fit `knee`)."
+            },
+            "rise_cm": {
+              "$ref": "#/definitions/Centimeters",
+              "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
             },
             "weight_kg": {
               "type": "number",
@@ -288,6 +302,14 @@
         "torso_length_cm": {
           "$ref": "#/definitions/Centimeters",
           "description": "Largo de torso, de la séptima cervical a la cintura."
+        },
+        "knee_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de rodilla (zona de fit `knee`)."
+        },
+        "rise_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
         },
         "weight_kg": {
           "type": "number",

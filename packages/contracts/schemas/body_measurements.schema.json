@@ -52,6 +52,14 @@
       "$ref": "#/definitions/Centimeters",
       "description": "Largo de torso, de la séptima cervical a la cintura."
     },
+    "knee_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Contorno de rodilla (zona de fit `knee`)."
+    },
+    "rise_cm": {
+      "$ref": "#/definitions/Centimeters",
+      "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
+    },
     "weight_kg": {
       "type": "number",
       "description": "Peso declarado, opcional; mejora la estimación de forma.",

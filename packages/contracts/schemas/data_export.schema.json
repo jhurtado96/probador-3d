@@ -93,6 +93,13 @@
         "$ref": "#/definitions/DataExportDrapeCache"
       }
     },
+    "garment_embeddings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/DataExportGarmentEmbedding"
+      },
+      "description": "Embeddings de imagen de las prendas propias (no se sirven a la app, pero son datos del usuario)."
+    },
     "jobs": {
       "type": "array",
       "items": {
@@ -117,6 +124,7 @@
     "user_fit_preferences",
     "outfits",
     "drape_cache",
+    "garment_embeddings",
     "jobs"
   ],
   "additionalProperties": false,
@@ -217,12 +225,13 @@
         },
         "text_version": {
           "type": "string",
-          "description": "Versión del texto legal aceptado, p. ej. `body_scan-2026-11`.",
+          "description": "Versión del texto legal aceptado (`ConsentText.version`), p. ej. `body_scan-2026-11`.",
           "minLength": 1,
           "maxLength": 64
         },
         "granted_at": {
-          "$ref": "#/definitions/ISODateTime"
+          "$ref": "#/definitions/ISODateTime",
+          "description": "La fija el servidor al insertar; el cliente no puede elegirla."
         },
         "withdrawn_at": {
           "anyOf": [
@@ -248,7 +257,7 @@
         "created_at"
       ],
       "additionalProperties": false,
-      "description": "Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`."
+      "description": "Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`. La app solo envía `purpose` (y, si quiere, `text_version`): la fecha la pone el servidor y la versión tiene que ser la vigente en `consent_texts`."
     },
     "ConsentPurpose": {
       "type": "string",
@@ -333,6 +342,12 @@
                 },
                 "torso_length_cm": {
                   "$ref": "#/definitions/Centimeters"
+                },
+                "knee_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "rise_cm": {
+                  "$ref": "#/definitions/Centimeters"
                 }
               },
               "additionalProperties": false
@@ -397,6 +412,14 @@
                 "torso_length_cm": {
                   "$ref": "#/definitions/Centimeters",
                   "description": "Largo de torso, de la séptima cervical a la cintura."
+                },
+                "knee_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Contorno de rodilla (zona de fit `knee`)."
+                },
+                "rise_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
                 },
                 "weight_kg": {
                   "type": "number",
@@ -550,6 +573,14 @@
         "torso_length_cm": {
           "$ref": "#/definitions/Centimeters",
           "description": "Largo de torso, de la séptima cervical a la cintura."
+        },
+        "knee_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de rodilla (zona de fit `knee`)."
+        },
+        "rise_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
         },
         "weight_kg": {
           "type": "number",
@@ -2659,6 +2690,33 @@
         "final"
       ]
     },
+    "DataExportGarmentEmbedding": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Modelo que lo generó, p. ej. `fashion-clip-vit-b32`."
+        },
+        "vector": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 512,
+          "maxItems": 512
+        },
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "garment_id",
+        "model",
+        "vector"
+      ],
+      "additionalProperties": false,
+      "description": "Embedding de una prenda propia, exportado."
+    },
     "DataExportJob": {
       "type": "object",
       "properties": {
@@ -2681,7 +2739,24 @@
           ]
         },
         "input": {
-          "$ref": "#/definitions/DataExportJobInput"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DataExportJobInput"
+            },
+            {
+              "$ref": "#/definitions/RetainedJobInput"
+            }
+          ]
+        },
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/JobResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "error": {
           "anyOf": [
@@ -2747,6 +2822,7 @@
         "progress",
         "stage",
         "input",
+        "output",
         "error",
         "attempts",
         "worker_version",
@@ -2757,7 +2833,7 @@
         "finished_at"
       ],
       "additionalProperties": false,
-      "description": "Job exportado. No lleva `output` (sus resultados ya están en `avatars`, `color_profiles`, `garments`, `fit_results` y `drape_cache`, con URLs firmadas) ni rutas de Storage."
+      "description": "Job exportado: todo lo que queda de la fila, sin rutas de Storage. `output` son las referencias que conserva `jobs.output` (los datos están en las demás secciones); `input` es la entrada completa sin rutas mientras el job no ha terminado y `RetainedJobInput` cuando ya terminó."
     },
     "JobType": {
       "type": "string",
@@ -2784,11 +2860,14 @@
           "type": "object",
           "properties": {
             "height_cm": {
-              "$ref": "#/definitions/Centimeters"
+              "type": "number",
+              "minimum": 50,
+              "maximum": 260
             },
             "weight_kg": {
               "type": "number",
-              "minimum": 0
+              "minimum": 20,
+              "maximum": 350
             },
             "gender": {
               "$ref": "#/definitions/BodyModelGender"
@@ -2831,10 +2910,12 @@
               "$ref": "#/definitions/GarmentCategory"
             },
             "size_label": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
             "brand": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 80
             }
           },
           "required": [
@@ -2866,7 +2947,9 @@
           "$ref": "#/definitions/UUID"
         },
         "size_label": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
         },
         "pose": {
           "$ref": "#/definitions/AvatarPose"
@@ -2884,6 +2967,111 @@
       ],
       "additionalProperties": false,
       "description": "Entrada del job `drape` tal como la envía la app: solo identificadores. La API resuelve lo que el simulador necesita y lo añade al despacho en `DrapeJobDispatch.context`."
+    },
+    "RetainedJobInput": {
+      "type": "object",
+      "properties": {
+        "consent_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "avatar_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Lo que queda de `jobs.input` cuando el job termina (o se cancela): solo los identificadores. Altura, peso, género y rutas de fotos se purgan al cerrar el job; retirar el consentimiento o borrar el avatar, el perfil de color o la prenda quita también su id. La API purga los jobs terminados a los 30 días."
+    },
+    "JobResult": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AvatarJobResult"
+        },
+        {
+          "$ref": "#/definitions/ColorJobResult"
+        },
+        {
+          "$ref": "#/definitions/GarmentJobResult"
+        },
+        {
+          "$ref": "#/definitions/DrapeJobResult"
+        }
+      ]
+    },
+    "AvatarJobResult": {
+      "type": "object",
+      "properties": {
+        "avatar_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "avatar_id"
+      ],
+      "additionalProperties": false,
+      "description": "Lo que `jobs.output` conserva de un job terminado con éxito: solo referencias a lo que se creó (minimización, art. 5.1.c y 5.1.e RGPD). El objeto de dominio completo (avatar con medidas, perfil de color…) vive solo en su tabla y se borra con ella; `jobs` no guarda copias."
+    },
+    "ColorJobResult": {
+      "type": "object",
+      "properties": {
+        "color_profile_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "color_profile_id"
+      ],
+      "additionalProperties": false
+    },
+    "GarmentJobResult": {
+      "type": "object",
+      "properties": {
+        "garment_id": {
+          "$ref": "#/definitions/UUID"
+        }
+      },
+      "required": [
+        "garment_id"
+      ],
+      "additionalProperties": false
+    },
+    "DrapeJobResult": {
+      "type": "object",
+      "properties": {
+        "drape_cache_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Entrada de `drape_cache` creada o reutilizada; `null` si el avatar o la prenda se borraron antes."
+        },
+        "fit_result_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cache_hit": {
+          "type": "boolean",
+          "description": "`true` si salió de `drape_cache` sin simular."
+        }
+      },
+      "required": [
+        "drape_cache_id",
+        "fit_result_id",
+        "cache_hit"
+      ],
+      "additionalProperties": false
     },
     "JobError": {
       "type": "object",
@@ -2918,6 +3106,7 @@
         "no_face_detected",
         "white_reference_missing",
         "garment_not_detected",
+        "person_detected",
         "low_image_quality",
         "consent_missing",
         "quota_exceeded",
@@ -2925,7 +3114,7 @@
         "timeout",
         "internal"
       ],
-      "description": "Motivo por el que falla un job. `not_implemented`: el worker aún no tiene pipeline real para ese tipo (no reintentar). `quota_exceeded`: se agotó una cuota (del usuario o del proveedor de GPU)."
+      "description": "Motivo por el que falla un job. `person_detected`: en una foto de prenda aparece una persona (piel o cara); el worker no sube ningún recorte y la foto se borra igualmente. `not_implemented`: el worker aún no tiene pipeline real para ese tipo (no reintentar). `quota_exceeded`: se agotó una cuota (del usuario o del proveedor de GPU)."
     }
   },
   "$id": "https://probador.app/schemas/data_export.schema.json",

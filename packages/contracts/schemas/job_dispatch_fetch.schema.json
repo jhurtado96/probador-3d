@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "job_id",
+    "attempt"
+  ],
+  "additionalProperties": false,
+  "description": "Cuerpo con el que el contenedor del worker pide el `JobDispatch` a `dispatch_url` (`POST` firmado con `PROBADOR_CALLBACK_SECRET`, el del sentido worker → API). Respuestas: 200 `JobDispatch`; 409 si el intento ya no es el vigente o el despacho ya se entregó.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    }
+  },
+  "$id": "https://probador.app/schemas/job_dispatch_fetch.schema.json",
+  "title": "JobDispatchFetch"
+}

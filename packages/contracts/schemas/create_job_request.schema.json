@@ -80,11 +80,14 @@
           "description": "Foto de cuerpo entero en el bucket efímero. Se borra al terminar el job."
         },
         "height_cm": {
-          "$ref": "#/definitions/Centimeters"
+          "type": "number",
+          "minimum": 50,
+          "maximum": 260
         },
         "weight_kg": {
           "type": "number",
-          "minimum": 0
+          "minimum": 20,
+          "maximum": 350
         },
         "gender": {
           "$ref": "#/definitions/BodyModelGender"
@@ -106,11 +109,6 @@
       "type": "string",
       "description": "Ruta de un objeto en Storage, `bucket/carpeta/fichero`.",
       "minLength": 3
-    },
-    "Centimeters": {
-      "type": "number",
-      "description": "Longitud en centímetros.",
-      "minimum": 0
     },
     "BodyModelGender": {
       "type": "string",
@@ -145,10 +143,12 @@
           "$ref": "#/definitions/GarmentCategory"
         },
         "size_label": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 32
         },
         "brand": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 80
         }
       },
       "required": [
@@ -184,7 +184,9 @@
           "$ref": "#/definitions/UUID"
         },
         "size_label": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
         },
         "pose": {
           "$ref": "#/definitions/AvatarPose"

@@ -47,9 +47,10 @@
         "confirmation_required",
         "storage_not_empty",
         "auth_delete_failed",
+        "scans_paused",
         "internal"
       ],
-      "description": "`consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`."
+      "description": "`consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`. `scans_paused` (503): hay una alerta de privacidad abierta (fotos que superan el plazo de borrado) y no se aceptan fotos nuevas hasta resolverla."
     }
   },
   "$id": "https://probador.app/schemas/api_error_body.schema.json",

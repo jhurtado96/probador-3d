@@ -13,12 +13,13 @@
     },
     "text_version": {
       "type": "string",
-      "description": "Versión del texto legal aceptado, p. ej. `body_scan-2026-11`.",
+      "description": "Versión del texto legal aceptado (`ConsentText.version`), p. ej. `body_scan-2026-11`.",
       "minLength": 1,
       "maxLength": 64
     },
     "granted_at": {
-      "$ref": "#/definitions/ISODateTime"
+      "$ref": "#/definitions/ISODateTime",
+      "description": "La fija el servidor al insertar; el cliente no puede elegirla."
     },
     "withdrawn_at": {
       "anyOf": [
@@ -44,7 +45,7 @@
     "created_at"
   ],
   "additionalProperties": false,
-  "description": "Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`.",
+  "description": "Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`. La app solo envía `purpose` (y, si quiere, `text_version`): la fecha la pone el servidor y la versión tiene que ser la vigente en `consent_texts`.",
   "definitions": {
     "UUID": {
       "type": "string",

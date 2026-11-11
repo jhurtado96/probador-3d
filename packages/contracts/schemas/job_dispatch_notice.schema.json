@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "type": {
+      "$ref": "#/definitions/JobType"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "dispatch_url": {
+      "$ref": "#/definitions/Url",
+      "description": "Endpoint de la API (`job-dispatch`) donde el contenedor pide el `JobDispatch`."
+    },
+    "contracts_version": {
+      "type": "string",
+      "description": "`CONTRACTS_VERSION` de la API que despacha."
+    }
+  },
+  "required": [
+    "job_id",
+    "type",
+    "attempt",
+    "dispatch_url",
+    "contracts_version"
+  ],
+  "additionalProperties": false,
+  "description": "Aviso de despacho: lo que la API envía al endpoint del worker (`POST` firmado con `PROBADOR_DISPATCH_SECRET`) y lo único que pasa por la cola del proveedor de GPU. Sin datos personales: ni `user_id`, ni medidas, ni URLs firmadas a fotos.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "JobType": {
+      "type": "string",
+      "enum": [
+        "avatar",
+        "garment",
+        "drape",
+        "color"
+      ]
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
+      "format": "uri"
+    }
+  },
+  "$id": "https://probador.app/schemas/job_dispatch_notice.schema.json",
+  "title": "JobDispatchNotice"
+}

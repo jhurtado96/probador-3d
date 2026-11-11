@@ -17,9 +17,10 @@
  * Los campos `*_url` de las entidades que apuntan a Storage privado tienen
  * tres representaciones, según dónde viaje el dato:
  *
- * 1. Worker → API (`JobCallback.output`) y `jobs.output`: una referencia
+ * 1. Worker → API (`JobCallback.output`): una referencia
  *    `storage://<StoragePath>` con la ruta exacta de `output_uploads[].path`
- *    (tipo `StorageRef`). El worker nunca inventa rutas.
+ *    (tipo `StorageRef`). El worker nunca inventa rutas. `jobs.output` no
+ *    guarda la salida del worker, solo ids (`JobResult`).
  * 2. Postgres: la RUTA, en una columna `*_path` (ver `STORAGE_URL_COLUMNS`).
  *    Es lo que la app lee con PostgREST.
  * 3. App: una URL https firmada y temporal, que la app obtiene firmando la
@@ -162,6 +163,10 @@ export interface BodyMeasurements {
   calf_cm?: Centimeters;
   /** Largo de torso, de la séptima cervical a la cintura. */
   torso_length_cm?: Centimeters;
+  /** Contorno de rodilla (zona de fit `knee`). */
+  knee_cm?: Centimeters;
+  /** Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo. */
+  rise_cm?: Centimeters;
   /**
    * Peso declarado, opcional; mejora la estimación de forma.
    * @minimum 0
@@ -463,6 +468,38 @@ export const ANCHOR_FIT_ZONES = [
   "sleeve_length",
   "body_length",
 ] as const satisfies readonly FitZone[];
+
+/**
+ * Medida corporal que corresponde a cada zona de fit (`ZoneFit.body_cm`). Es la
+ * única tabla de correspondencia: el worker de fit y la app la importan de aquí
+ * y no inventan la suya. `null`: la zona no tiene medida corporal equivalente
+ * (`hem`, el bajo, es solo de diseño) y no entra en `FitResult.zones`.
+ *
+ * Si falta la medida corporal de una zona (las opcionales de `BodyMeasurements`
+ * no siempre se estiman), el fit OMITE esa zona de `zones` en lugar de
+ * inventarla. Si la que falta es una zona ancla (`ANCHOR_FIT_ZONES`),
+ * `size_offset` es `null` cuando no queda ninguna ancla medible y
+ * `FitResult.confidence` no puede pasar de 0,5.
+ */
+export const FIT_ZONE_BODY_MEASUREMENT = {
+  neck: "neck_cm",
+  shoulder: "shoulder_width_cm",
+  chest: "chest_cm",
+  waist: "waist_cm",
+  hip: "hip_cm",
+  sleeve_length: "arm_length_cm",
+  bicep: "bicep_cm",
+  cuff: "wrist_cm",
+  body_length: "torso_length_cm",
+  thigh: "thigh_cm",
+  knee: "knee_cm",
+  inseam: "inseam_cm",
+  rise: "rise_cm",
+  hem: null,
+} as const satisfies Record<FitZone, BodyMeasurementKey | null>;
+
+/** Confianza máxima de un `FitResult` al que le falta la medida corporal de alguna zona ancla. */
+export const FIT_MAX_CONFIDENCE_WITHOUT_ANCHOR = 0.5;
 
 /** Medidas de una prenda por zona, en cm. */
 export type ZoneMeasurements = Partial<Record<FitZone, Centimeters>>;
@@ -858,17 +895,42 @@ export const CONSENT_PURPOSES = [
 /** Tratamiento que ampara el consentimiento (`docs/architecture.md` §4). */
 export type ConsentPurpose = (typeof CONSENT_PURPOSES)[number];
 
-/** Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`. */
+/**
+ * Texto legal de un consentimiento (tabla `consent_texts`, solo de lectura y
+ * sin borrado: cada cambio es una versión nueva). La app muestra `body` y
+ * registra el consentimiento con `purpose` y, opcionalmente, `version`; la
+ * versión vigente es la última publicada de cada tratamiento.
+ */
+export interface ConsentText {
+  purpose: ConsentPurpose;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  version: string;
+  /** Texto íntegro, tal como se mostró. */
+  body: string;
+  /** SHA-256 de `body` en hex: prueba de qué texto exacto se aceptó. */
+  sha256: string;
+  published_at: ISODateTime;
+}
+
+/**
+ * Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`.
+ * La app solo envía `purpose` (y, si quiere, `text_version`): la fecha la pone
+ * el servidor y la versión tiene que ser la vigente en `consent_texts`.
+ */
 export interface Consent {
   id: UUID;
   user_id: UUID;
   purpose: ConsentPurpose;
   /**
-   * Versión del texto legal aceptado, p. ej. `body_scan-2026-11`.
+   * Versión del texto legal aceptado (`ConsentText.version`), p. ej. `body_scan-2026-11`.
    * @minLength 1
    * @maxLength 64
    */
   text_version: string;
+  /** La fija el servidor al insertar; el cliente no puede elegirla. */
   granted_at: ISODateTime;
   withdrawn_at: ISODateTime | null;
   created_at: ISODateTime;
@@ -935,6 +997,7 @@ export const JOB_ERROR_CODES = [
   "no_face_detected",
   "white_reference_missing",
   "garment_not_detected",
+  "person_detected",
   "low_image_quality",
   "consent_missing",
   "quota_exceeded",
@@ -943,7 +1006,9 @@ export const JOB_ERROR_CODES = [
   "internal",
 ] as const;
 /**
- * Motivo por el que falla un job. `not_implemented`: el worker aún no tiene
+ * Motivo por el que falla un job. `person_detected`: en una foto de prenda
+ * aparece una persona (piel o cara); el worker no sube ningún recorte y la
+ * foto se borra igualmente. `not_implemented`: el worker aún no tiene
  * pipeline real para ese tipo (no reintentar). `quota_exceeded`: se agotó una
  * cuota (del usuario o del proveedor de GPU).
  */
@@ -964,8 +1029,15 @@ export type WhiteReference = (typeof WHITE_REFERENCES)[number];
 export interface AvatarJobInput {
   /** Foto de cuerpo entero en el bucket efímero. Se borra al terminar el job. */
   photo_path: StoragePath;
-  height_cm: Centimeters;
-  /** @minimum 0 */
+  /**
+   * @minimum 50
+   * @maximum 260
+   */
+  height_cm: number;
+  /**
+   * @minimum 20
+   * @maximum 350
+   */
   weight_kg?: number;
   gender?: BodyModelGender;
   /** Consentimiento vigente que ampara este tratamiento. */
@@ -1001,7 +1073,9 @@ export interface GarmentJobInput {
    */
   image_paths: StoragePath[];
   category_hint?: GarmentCategory;
+  /** @maxLength 32 */
   size_label?: string;
+  /** @maxLength 80 */
   brand?: string;
 }
 
@@ -1023,6 +1097,10 @@ export type DrapeQuality = (typeof DRAPE_QUALITIES)[number];
 export interface DrapeJobInput {
   avatar_id: UUID;
   garment_id: UUID;
+  /**
+   * @minLength 1
+   * @maxLength 32
+   */
   size_label: string;
   pose: AvatarPose;
   quality: DrapeQuality;
@@ -1121,6 +1199,45 @@ export interface DrapeCache {
   created_at: ISODateTime;
 }
 
+/**
+ * Lo que `jobs.output` conserva de un job terminado con éxito: solo
+ * referencias a lo que se creó (minimización, art. 5.1.c y 5.1.e RGPD). El
+ * objeto de dominio completo (avatar con medidas, perfil de color…) vive solo
+ * en su tabla y se borra con ella; `jobs` no guarda copias.
+ */
+export interface AvatarJobResult {
+  avatar_id: UUID;
+}
+export interface ColorJobResult {
+  color_profile_id: UUID;
+}
+export interface GarmentJobResult {
+  garment_id: UUID;
+}
+export interface DrapeJobResult {
+  /** Entrada de `drape_cache` creada o reutilizada; `null` si el avatar o la prenda se borraron antes. */
+  drape_cache_id: UUID | null;
+  fit_result_id: UUID | null;
+  /** `true` si salió de `drape_cache` sin simular. */
+  cache_hit: boolean;
+}
+export type JobResult = AvatarJobResult | ColorJobResult | GarmentJobResult | DrapeJobResult;
+
+/**
+ * Lo que queda de `jobs.input` cuando el job termina (o se cancela): solo los
+ * identificadores. Altura, peso, género y rutas de fotos se purgan al cerrar
+ * el job; retirar el consentimiento o borrar el avatar, el perfil de color o la
+ * prenda quita también su id. La API purga los jobs terminados a los 30 días.
+ */
+export interface RetainedJobInput {
+  consent_id?: UUID;
+  avatar_id?: UUID;
+  garment_id?: UUID;
+}
+
+/** Días que se conserva una fila de `jobs` terminada antes de purgarla. */
+export const JOB_RETENTION_DAYS = 30;
+
 interface JobBase<T extends JobType, I, O> {
   id: UUID;
   /** Dueño. `null` en jobs de ingesta de catálogo. */
@@ -1131,8 +1248,9 @@ interface JobBase<T extends JobType, I, O> {
   progress: UnitInterval;
   /** Etapa actual legible por máquina: `segmenting`, `fitting`, `exporting`… */
   stage?: string;
-  input: I;
-  /** Presente solo si `status` es `succeeded`. */
+  /** Entrada completa mientras el job está en cola o en curso; `RetainedJobInput` al terminar. */
+  input: I | RetainedJobInput;
+  /** Presente solo si `status` es `succeeded`: referencias a lo creado, nunca el objeto completo. */
   output: O | null;
   /** Presente solo si `status` es `failed`. */
   error: JobError | null;
@@ -1160,10 +1278,10 @@ interface JobBase<T extends JobType, I, O> {
   finished_at: ISODateTime | null;
 }
 
-export type AvatarJob = JobBase<"avatar", AvatarJobInput, AvatarJobOutput>;
-export type GarmentJob = JobBase<"garment", GarmentJobInput, GarmentJobOutput>;
-export type DrapeJob = JobBase<"drape", DrapeJobInput, DrapeJobOutput>;
-export type ColorJob = JobBase<"color", ColorJobInput, ColorJobOutput>;
+export type AvatarJob = JobBase<"avatar", AvatarJobInput, AvatarJobResult>;
+export type GarmentJob = JobBase<"garment", GarmentJobInput, GarmentJobResult>;
+export type DrapeJob = JobBase<"drape", DrapeJobInput, DrapeJobResult>;
+export type ColorJob = JobBase<"color", ColorJobInput, ColorJobResult>;
 
 /** Fila de `jobs`. Unión discriminada por `type`. */
 export type Job = AvatarJob | GarmentJob | DrapeJob | ColorJob;
@@ -1175,11 +1293,20 @@ export interface JobInputByType {
   color: ColorJobInput;
 }
 
+/** Salida que el worker envía en el callback, por tipo de job. */
 export interface JobOutputByType {
   avatar: AvatarJobOutput;
   garment: GarmentJobOutput;
   drape: DrapeJobOutput;
   color: ColorJobOutput;
+}
+
+/** Lo que conserva `jobs.output`, por tipo de job. */
+export interface JobResultByType {
+  avatar: AvatarJobResult;
+  garment: GarmentJobResult;
+  drape: DrapeJobResult;
+  color: ColorJobResult;
 }
 
 /** Cuerpo de `POST /functions/v1/create-job`: lo que la app envía para crear un job. */
@@ -1259,15 +1386,55 @@ export interface DrapeJobDispatch extends JobDispatchBase<"drape", DrapeJobInput
 }
 
 /**
- * Lo que la API envía al worker al despachar un job (`POST` firmado, ver
- * «Firma de peticiones entre API y workers»). Unión discriminada por `type`.
- * El worker no recibe credenciales de la base de datos: solo URLs firmadas.
+ * Despacho completo de un job: lo que el worker necesita para procesarlo.
+ * Unión discriminada por `type`. El worker no recibe credenciales de la base
+ * de datos: solo URLs firmadas.
+ *
+ * No viaja en el aviso que pasa por la cola del proveedor de GPU (A3): la API
+ * envía un `JobDispatchNotice` con solo identificadores, y el contenedor que
+ * ejecuta el job pide este objeto a `JobDispatchNotice.dispatch_url` con un
+ * `JobDispatchFetch` firmado. La API lo entrega una sola vez por intento.
  */
 export type JobDispatch =
   | AvatarJobDispatch
   | GarmentJobDispatch
   | DrapeJobDispatch
   | ColorJobDispatch;
+
+/**
+ * Aviso de despacho: lo que la API envía al endpoint del worker (`POST`
+ * firmado con `PROBADOR_DISPATCH_SECRET`) y lo único que pasa por la cola del
+ * proveedor de GPU. Sin datos personales: ni `user_id`, ni medidas, ni URLs
+ * firmadas a fotos.
+ */
+export interface JobDispatchNotice {
+  job_id: UUID;
+  type: JobType;
+  /**
+   * @minimum 1
+   * @asType integer
+   */
+  attempt: number;
+  /** Endpoint de la API (`job-dispatch`) donde el contenedor pide el `JobDispatch`. */
+  dispatch_url: Url;
+  /** `CONTRACTS_VERSION` de la API que despacha. */
+  contracts_version: string;
+}
+
+/**
+ * Cuerpo con el que el contenedor del worker pide el `JobDispatch` a
+ * `dispatch_url` (`POST` firmado con `PROBADOR_CALLBACK_SECRET`, el del
+ * sentido worker → API). Respuestas: 200 `JobDispatch`; 409 si el intento ya
+ * no es el vigente o el despacho ya se entregó.
+ */
+export interface JobDispatchFetch {
+  job_id: UUID;
+  /**
+   * @minimum 1
+   * @asType integer
+   */
+  attempt: number;
+}
 
 /**
  * Lo que el worker envía a `callback_url` (`POST` firmado, igual que el
@@ -1347,9 +1514,14 @@ export const API_ERROR_CODES = [
   "confirmation_required",
   "storage_not_empty",
   "auth_delete_failed",
+  "scans_paused",
   "internal",
 ] as const;
-/** `consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`. */
+/**
+ * `consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`.
+ * `scans_paused` (503): hay una alerta de privacidad abierta (fotos que
+ * superan el plazo de borrado) y no se aceptan fotos nuevas hasta resolverla.
+ */
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
 /** Cuerpo de toda respuesta de error (4xx/5xx) de las Edge Functions. */
@@ -1412,9 +1584,10 @@ export type DataExportJobInput =
   | DrapeJobInput;
 
 /**
- * Job exportado. No lleva `output` (sus resultados ya están en `avatars`,
- * `color_profiles`, `garments`, `fit_results` y `drape_cache`, con URLs
- * firmadas) ni rutas de Storage.
+ * Job exportado: todo lo que queda de la fila, sin rutas de Storage. `output`
+ * son las referencias que conserva `jobs.output` (los datos están en las demás
+ * secciones); `input` es la entrada completa sin rutas mientras el job no ha
+ * terminado y `RetainedJobInput` cuando ya terminó.
  */
 export interface DataExportJob {
   id: UUID;
@@ -1422,7 +1595,8 @@ export interface DataExportJob {
   status: JobStatus;
   progress: UnitInterval;
   stage: string | null;
-  input: DataExportJobInput;
+  input: DataExportJobInput | RetainedJobInput;
+  output: JobResult | null;
   error: JobError | null;
   /**
    * @minimum 0
@@ -1435,6 +1609,11 @@ export interface DataExportJob {
   created_at: ISODateTime;
   started_at: ISODateTime | null;
   finished_at: ISODateTime | null;
+}
+
+/** Embedding de una prenda propia, exportado. */
+export interface DataExportGarmentEmbedding extends GarmentEmbedding {
+  garment_id: UUID;
 }
 
 /**
@@ -1462,6 +1641,8 @@ export interface DataExport {
   user_fit_preferences: UserFitPreferences | null;
   outfits: Outfit[];
   drape_cache: DataExportDrapeCache[];
+  /** Embeddings de imagen de las prendas propias (no se sirven a la app, pero son datos del usuario). */
+  garment_embeddings: DataExportGarmentEmbedding[];
   jobs: DataExportJob[];
 }
 
@@ -1481,4 +1662,4 @@ export const RANKING_WEIGHTS = {
 } as const;
 
 /** Versión del contrato. Sube el mayor cuando un cambio rompe a los workers. */
-export const CONTRACTS_VERSION = "0.3.0";
+export const CONTRACTS_VERSION = "0.4.0";

@@ -14,7 +14,7 @@
       "$ref": "#/definitions/ColorJobDispatch"
     }
   ],
-  "description": "Lo que la API envía al worker al despachar un job (`POST` firmado, ver «Firma de peticiones entre API y workers»). Unión discriminada por `type`. El worker no recibe credenciales de la base de datos: solo URLs firmadas.",
+  "description": "Despacho completo de un job: lo que el worker necesita para procesarlo. Unión discriminada por `type`. El worker no recibe credenciales de la base de datos: solo URLs firmadas.\n\nNo viaja en el aviso que pasa por la cola del proveedor de GPU (A3): la API envía un `JobDispatchNotice` con solo identificadores, y el contenedor que ejecuta el job pide este objeto a `JobDispatchNotice.dispatch_url` con un `JobDispatchFetch` firmado. La API lo entrega una sola vez por intento.",
   "definitions": {
     "AvatarJobDispatch": {
       "type": "object",
@@ -94,11 +94,14 @@
           "description": "Foto de cuerpo entero en el bucket efímero. Se borra al terminar el job."
         },
         "height_cm": {
-          "$ref": "#/definitions/Centimeters"
+          "type": "number",
+          "minimum": 50,
+          "maximum": 260
         },
         "weight_kg": {
           "type": "number",
-          "minimum": 0
+          "minimum": 20,
+          "maximum": 350
         },
         "gender": {
           "$ref": "#/definitions/BodyModelGender"
@@ -120,11 +123,6 @@
       "type": "string",
       "description": "Ruta de un objeto en Storage, `bucket/carpeta/fichero`.",
       "minLength": 3
-    },
-    "Centimeters": {
-      "type": "number",
-      "description": "Longitud en centímetros.",
-      "minimum": 0
     },
     "BodyModelGender": {
       "type": "string",
@@ -260,10 +258,12 @@
           "$ref": "#/definitions/GarmentCategory"
         },
         "size_label": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 32
         },
         "brand": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 80
         }
       },
       "required": [
@@ -369,7 +369,9 @@
           "$ref": "#/definitions/UUID"
         },
         "size_label": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
         },
         "pose": {
           "$ref": "#/definitions/AvatarPose"
@@ -496,6 +498,12 @@
                 },
                 "torso_length_cm": {
                   "$ref": "#/definitions/Centimeters"
+                },
+                "knee_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "rise_cm": {
+                  "$ref": "#/definitions/Centimeters"
                 }
               },
               "additionalProperties": false
@@ -578,6 +586,14 @@
           "$ref": "#/definitions/Centimeters",
           "description": "Largo de torso, de la séptima cervical a la cintura."
         },
+        "knee_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de rodilla (zona de fit `knee`)."
+        },
+        "rise_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Tiro: de la cintura a la entrepierna por delante (zona de fit `rise`); el usuario puede corregirlo."
+        },
         "weight_kg": {
           "type": "number",
           "description": "Peso declarado, opcional; mejora la estimación de forma.",
@@ -595,6 +611,11 @@
       ],
       "additionalProperties": false,
       "description": "Medidas del cuerpo en cm. Los contornos son perímetros completos. Las obligatorias son las que el fit del MVP necesita; el resto depende del método de medición."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
     },
     "DrapeGarmentContext": {
       "type": "object",
