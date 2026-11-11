@@ -7,7 +7,7 @@
  *
  * El maniquí está hecho con primitivas y en pose A, que es la misma pose que se
  * pide en la guía de captura. Mide ~1,75 unidades (1 unidad = 1 m) y tiene los
- * pies en y = 0. Cuando exista el avatar SMPL-X real (glTF/GLB) sustituirá a
+ * pies en y = 0. Cuando exista el GLB real del avatar (glTF/GLB) sustituirá a
  * <Mannequin />.
  */
 

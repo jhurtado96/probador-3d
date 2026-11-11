@@ -15,12 +15,17 @@ App del probador virtual 3D con un único código para web, Android e iOS.
 
 Requisitos: Node 20+ (probado con Node 22) y npm.
 
+La app es un workspace de npm del monorepo: se instala **desde la raíz**, con un único `package-lock.json`, y depende de
+`@probador/contracts` (`packages/contracts`, consumido como fuente TypeScript; Metro lo resuelve sin configuración).
+
 ```bash
-cd apps/app
+cd probador-3d        # raíz del monorepo
 npm install
+cd apps/app
 ```
 
-> Añade dependencias con `npx expo install <paquete>` para que Expo elija versiones compatibles con el SDK.
+> Añade dependencias con `npx expo install <paquete>` desde `apps/app` para que Expo elija versiones compatibles con el SDK.
+> No ejecutes `npm install` dentro de `apps/app`: crearía un lockfile suelto.
 
 ## Web
 
@@ -94,7 +99,7 @@ Sigue el modo claro/oscuro del sistema (`userInterfaceStyle: "automatic"`). Colo
 
 - `expo-gl` implementa WebGL 1/2 parcialmente: no hay `OffscreenCanvas` ni algunas extensiones; sombras, postprocesado y texturas grandes deben probarse en dispositivo real.
 - El antialiasing y el rendimiento dependen del dispositivo y de expo-gl (los bordes pueden verse más dentados que en web); en el simulador de iOS y el emulador Android el render es lento porque usan GPU por software.
-- Cargar glTF/GLB en nativo (`useLoader`/`GLTFLoader`) pasa por `expo-asset`/`expo-file-system`; las texturas embebidas en GLB pueden necesitar ajustes. Validarlo cuando llegue el avatar SMPL-X real.
+- Cargar glTF/GLB en nativo (`useLoader`/`GLTFLoader`) pasa por `expo-asset`/`expo-file-system`; las texturas embebidas en GLB pueden necesitar ajustes. Validarlo cuando llegue el GLB real del avatar (la app solo consume el GLB y las medidas: no depende del modelo corporal).
 - `@react-three/drei` no es totalmente compatible con nativo (p. ej. `OrbitControls`, `Html`); por eso el giro se hace con `PanResponder` propio.
 - El giro re-renderiza la escena en cada movimiento (suficiente para un maniquí sencillo); con mallas pesadas convendrá mover la rotación a `useFrame`/refs.
 - Hot reload en nativo puede dejar el contexto GL en mal estado; si el visor queda en negro, recarga la app.

@@ -1,3 +1,4 @@
+import { CONTRACTS_VERSION } from '@probador/contracts';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
@@ -36,6 +37,9 @@ export default function PerfilScreen() {
           <Text style={[styles.cardBody, { color: colors.textMuted }]}>{s.body}</Text>
         </View>
       ))}
+      <Text style={[styles.footer, { color: colors.textMuted }]}>
+        Contrato de datos v{CONTRACTS_VERSION}
+      </Text>
     </Screen>
   );
 }
@@ -44,4 +48,5 @@ const styles = StyleSheet.create({
   card: { padding: 16, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, gap: 6 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
   cardBody: { fontSize: 14, lineHeight: 20 },
+  footer: { fontSize: 12, textAlign: 'center' },
 });

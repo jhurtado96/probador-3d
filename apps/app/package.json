@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~58.0.17",
     "@expo/vector-icons": "^15.0.2",
+    "@probador/contracts": "*",
     "@react-three/fiber": "^9.8.2",
     "expo": "~58.0.24",
     "expo-asset": "~58.0.21",

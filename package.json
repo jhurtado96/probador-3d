@@ -1,0 +1,20 @@
+{
+  "name": "probador-3d",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Probador virtual 3D: monorepo (app Expo, contratos, backend Supabase y workers Python)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test:contracts": "npm test --workspace @probador/contracts",
+    "schemas": "npm run schemas --workspace @probador/contracts",
+    "typecheck:app": "npm run typecheck --workspace @probador/app",
+    "export:web": "npm run export:web --workspace @probador/app",
+    "check": "npm run test:contracts && npm run typecheck:app"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
