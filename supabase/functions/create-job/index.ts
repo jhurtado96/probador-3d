@@ -12,6 +12,17 @@
 //   La app avisa de que terminó de subir las fotos; se despacha en el acto.
 //   (Si la app no avisa, pg_cron lo despacha en menos de un minuto.)
 //
+// Revisión de la fase 0:
+//   · B8: cuota e inserción en una sola transacción (RPC enqueue_job).
+//   · M4: la clave de caché del drapeado incluye las medidas efectivas del
+//     avatar (con measurements_override) y la versión real de la prenda.
+//   · M6: si hay fotos que superan el plazo de borrado (alerta abierta), no se
+//     aceptan jobs con fotos nuevas: 503 scans_paused.
+//   · M5: los jobs de prenda no piden consentimiento propio (base: ejecución
+//     del contrato); a cambio, la captura pide la prenda sin la persona y el
+//     worker rechaza las fotos con una persona (person_detected). Ver §7, D12.
+//   · A1: un acierto de caché guarda en jobs.output solo ids.
+//
 // Respuesta 201: CreateJobResponse = { job: Job, uploads: UploadTicket[] }
 // Errores: ApiErrorBody = { error: { code, message, details? } }; `consent_missing`
 // y `quota_exceeded` usan el mismo código que JobErrorCode.
@@ -64,6 +75,17 @@ async function assertConsent(admin: SupabaseClient, userId: string, req: CreateJ
   }
 }
 
+/** M6: con fotos pendientes de borrar fuera de plazo no entran fotos nuevas. */
+async function assertScansAllowed(admin: SupabaseClient, req: CreateJobRequest) {
+  if (req.type === "drape") return;
+  const { data, error } = await admin.rpc("scans_paused");
+  if (error) throw error;
+  if (data === true) {
+    throw new HttpError(503, "scans_paused", "photo processing is paused by a privacy alert; try again later");
+  }
+}
+
+/** Cuota no atómica: solo para el acierto de caché, que no gasta GPU. Los demás pasan por enqueue_job (B8). */
 async function assertQuota(admin: SupabaseClient, userId: string) {
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { count, error } = await admin
@@ -94,17 +116,33 @@ async function assertGarmentOwned(admin: SupabaseClient, userId: string, input: 
   }
 }
 
+/** JSON con las claves ordenadas: el mismo objeto da siempre el mismo hash. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 /** Comprueba avatar y prenda y calcula la clave de caché del drapeado. */
 async function drapeCacheKey(admin: SupabaseClient, userId: string, input: DrapeJobInput): Promise<string> {
-  const [{ data: avatar, error: e1 }, { data: garment, error: e2 }] = await Promise.all([
-    admin.from("avatars").select("id, user_id, shape_hash").eq("id", input.avatar_id).maybeSingle(),
+  const [{ data: avatar, error: e1 }, { data: garment, error: e2 }, { data: sizes, error: e3 }] = await Promise.all([
+    admin.from("avatars").select("id, user_id, shape_hash, measurements, measurements_override")
+      .eq("id", input.avatar_id).maybeSingle(),
     admin.from("garments")
-      .select("id, user_id, status, glb_path, sewing_pattern_path, attributes, updated_at")
+      .select("id, user_id, status, glb_path, sewing_pattern_path, attributes, pipeline_version")
       .eq("id", input.garment_id)
       .maybeSingle(),
+    admin.from("garment_measurements").select("zones, source")
+      .eq("garment_id", input.garment_id).eq("size_label", input.size_label).maybeSingle(),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+  if (e3) throw e3;
   if (!avatar || avatar.user_id !== userId) throw new HttpError(404, "not_found", "avatar not found");
   if (!garment || (garment.user_id !== null && garment.user_id !== userId)) {
     throw new HttpError(404, "not_found", "garment not found");
@@ -112,11 +150,23 @@ async function drapeCacheKey(admin: SupabaseClient, userId: string, input: Drape
   if (garment.status !== "ready" || !(garment.sewing_pattern_path || garment.glb_path)) {
     throw new HttpError(409, "conflict", "garment is not ready");
   }
-  // hash(shape_hash, prenda y su versión, talla, pose, calidad, tejido, versión del simulador)
+  // hash(forma y medidas efectivas, prenda y su versión, talla, pose, calidad, tejido, versión del simulador).
+  // M4: las medidas efectivas (con measurements_override) entran en la clave: corregir la cintura cambia la clave
+  // (y además el trigger avatars_invalidate_drape_cache borra la caché del avatar).
+  const effectiveMeasurements = { ...(avatar.measurements ?? {}), ...(avatar.measurements_override ?? {}) };
+  // Versión de la prenda: lo que cambia el resultado de la simulación, no `updated_at` (renombrarla no invalida).
+  const garmentVersion = canonicalJson({
+    pipeline_version: garment.pipeline_version,
+    glb_path: garment.glb_path,
+    sewing_pattern_path: garment.sewing_pattern_path,
+    attributes: garment.attributes ?? {},
+    measurements: sizes ?? null,
+  });
   const material = [
     avatar.shape_hash,
+    await sha256Hex(canonicalJson(effectiveMeasurements)),
     garment.id,
-    garment.updated_at,
+    await sha256Hex(garmentVersion),
     input.size_label,
     input.pose,
     input.quality,
@@ -142,11 +192,6 @@ async function tryDrapeCacheHit(
   if (error) throw error;
   if (!hit) return null;
 
-  let fit_result: Record<string, unknown> | undefined;
-  if (hit.fit_result_id) {
-    const { data } = await admin.from("fit_results").select("*").eq("id", hit.fit_result_id).maybeSingle();
-    if (data) fit_result = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null));
-  }
   const now = new Date().toISOString();
   const { data: job, error: insErr } = await admin
     .from("jobs")
@@ -156,12 +201,8 @@ async function tryDrapeCacheHit(
       status: "succeeded",
       progress: 1,
       input: req.input,
-      output: {
-        glb_url: `storage://${hit.glb_path}`,
-        cache_key: cacheKey,
-        cache_hit: true,
-        ...(fit_result ? { fit_result } : {}),
-      },
+      // A1: solo referencias; el GLB y el FitResult se leen de sus tablas.
+      output: { drape_cache_id: hit.id, fit_result_id: hit.fit_result_id ?? null, cache_hit: true },
       started_at: now,
       finished_at: now,
     })
@@ -211,30 +252,29 @@ async function createJob(req: Request): Promise<Response> {
   }
 
   await assertConsent(admin, user.id, body);
-  await assertQuota(admin, user.id);
+  await assertScansAllowed(admin, body);
 
   let cacheKey: string | null = null;
   if (body.type === "garment") await assertGarmentOwned(admin, user.id, body.input);
   if (body.type === "drape") {
     cacheKey = await drapeCacheKey(admin, user.id, body.input);
+    await assertQuota(admin, user.id);
     const cached = await tryDrapeCacheHit(admin, user.id, body, cacheKey);
     if (cached) return json({ job: cached, uploads: [] } satisfies CreateJobResponse, 201);
   }
 
-  const { data: job, error } = await admin
-    .from("jobs")
-    .insert({ user_id: user.id, type: body.type, status: "queued", input: body.input })
-    .select("*")
-    .single();
+  // B8: cuota y alta del job (con su job_runs) en una transacción con bloqueo por usuario.
+  const { data: rows, error } = await admin.rpc("enqueue_job", {
+    p_user_id: user.id,
+    p_type: body.type,
+    p_input: body.input,
+    p_input_paths: paths,
+    p_cache_key: cacheKey,
+    p_daily_limit: env.jobDailyQuota(),
+  });
   if (error) throw error;
-
-  const { error: runErr } = await admin
-    .from("job_runs")
-    .insert({ job_id: job.id, input_paths: paths, cache_key: cacheKey });
-  if (runErr) {
-    await admin.from("jobs").delete().eq("id", job.id);
-    throw runErr;
-  }
+  const job = ((rows ?? []) as Job[])[0];
+  if (!job) throw new HttpError(429, "quota_exceeded", "daily job quota exceeded");
 
   const uploads = await uploadTickets(admin, paths);
   if (uploads.length === 0) await dispatchQueued(admin, { jobId: job.id });

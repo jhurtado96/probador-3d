@@ -13,6 +13,12 @@ import jobCallbackSchema from "@probador/contracts/schemas/job_callback.schema.j
 import jobDispatchSchema from "@probador/contracts/schemas/job_dispatch.schema.json" with {
   type: "json",
 };
+import jobDispatchNoticeSchema from "@probador/contracts/schemas/job_dispatch_notice.schema.json" with {
+  type: "json",
+};
+import jobDispatchFetchSchema from "@probador/contracts/schemas/job_dispatch_fetch.schema.json" with {
+  type: "json",
+};
 import dataExportSchema from "@probador/contracts/schemas/data_export.schema.json" with {
   type: "json",
 };
@@ -23,6 +29,7 @@ export type {
   CreateJobRequest,
   CreateJobResponse,
   DataExport,
+  DataExportGarmentEmbedding,
   DataExportJob,
   DataExportJobInput,
   DrapeJobContext,
@@ -31,7 +38,10 @@ export type {
   Job,
   JobCallback,
   JobDispatch,
+  JobDispatchFetch,
+  JobDispatchNotice,
   JobError,
+  JobResult,
   JobType,
   SignedUpload,
   UploadTicket,
@@ -40,10 +50,20 @@ export {
   CONTRACTS_VERSION,
   DATA_EXPORT_FORMAT,
   DATA_EXPORT_SIGNED_URL_TTL_SECONDS,
+  GARMENT_EMBEDDING_DIMENSIONS,
+  JOB_RETENTION_DAYS,
   JOB_TYPES,
 } from "@probador/contracts";
 
-import type { CreateJobRequest, DataExport, JobCallback, JobDispatch, JobType } from "@probador/contracts";
+import type {
+  CreateJobRequest,
+  DataExport,
+  JobCallback,
+  JobDispatch,
+  JobDispatchFetch,
+  JobDispatchNotice,
+  JobType,
+} from "@probador/contracts";
 
 // ajv-formats es CommonJS: según el cargador, el plugin llega como default o como default.default.
 type FormatsPlugin = (ajv: Ajv) => Ajv;
@@ -55,6 +75,8 @@ addFormats(ajv);
 ajv.addSchema(createJobRequestSchema);
 ajv.addSchema(jobCallbackSchema);
 ajv.addSchema(jobDispatchSchema);
+ajv.addSchema(jobDispatchNoticeSchema);
+ajv.addSchema(jobDispatchFetchSchema);
 ajv.addSchema(dataExportSchema);
 
 function compiled(id: string): ValidateFunction {
@@ -69,6 +91,8 @@ const validators = {
   createJobRequest: compiled((createJobRequestSchema as { $id: string }).$id),
   jobCallback: compiled(CALLBACK_ID),
   jobDispatch: compiled((jobDispatchSchema as { $id: string }).$id),
+  jobDispatchNotice: compiled((jobDispatchNoticeSchema as { $id: string }).$id),
+  jobDispatchFetch: compiled((jobDispatchFetchSchema as { $id: string }).$id),
   dataExport: compiled((dataExportSchema as { $id: string }).$id),
   output: {
     avatar: compiled(`${CALLBACK_ID}#/definitions/AvatarJobOutput`),
@@ -97,6 +121,8 @@ export const validate = {
   createJobRequest: (d: unknown) => result<CreateJobRequest>(validators.createJobRequest, d),
   jobCallback: (d: unknown) => result<JobCallback>(validators.jobCallback, d),
   jobDispatch: (d: unknown) => result<JobDispatch>(validators.jobDispatch, d),
+  jobDispatchNotice: (d: unknown) => result<JobDispatchNotice>(validators.jobDispatchNotice, d),
+  jobDispatchFetch: (d: unknown) => result<JobDispatchFetch>(validators.jobDispatchFetch, d),
   dataExport: (d: unknown) => result<DataExport>(validators.dataExport, d),
   output: (type: JobType, d: unknown) => result<unknown>(validators.output[type], d),
 };

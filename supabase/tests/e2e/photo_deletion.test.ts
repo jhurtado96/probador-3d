@@ -2,10 +2,14 @@
 //
 // Comprueba lo que pgTAP no puede: que los FICHEROS desaparecen de Storage.
 //   · create-job valida, exige consentimiento y entrega la URL firmada de subida.
-//   · El job se despacha a un worker falso (este test) con un JobDispatch válido.
+//   · El job se despacha a un worker falso (este test) con un aviso sin datos
+//     personales (JobDispatchNotice); el worker pide el JobDispatch completo a
+//     job-dispatch, que lo entrega una sola vez por intento (A3, B4).
 //   · job-callback rechaza firmas malas y, al terminar el job (bien o mal),
 //     borra la foto de raw-uploads.
 //   · maintenance barre las fotos de más de 60 minutos.
+//   · Storage rechaza subidas que ningún job activo espera (M2, B5).
+//   · jobs.input y jobs.output terminan sin datos personales (A1).
 //   · export-data (D7) devuelve un DataExport válido, con URLs firmadas que
 //     descargan los ficheros, sin rutas internas y sin datos de otro usuario;
 //     aplica la cuota diaria.
@@ -23,7 +27,7 @@ import { strict as assert } from "node:assert";
 import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
 import { signedHeaders, verifyRequest } from "../../functions/_shared/hmac.ts";
-import { CONTRACTS_VERSION, type DataExport, type JobDispatch } from "@probador/contracts";
+import { CONTRACTS_VERSION, type DataExport, type JobDispatch, type JobDispatchNotice } from "@probador/contracts";
 import { validate } from "../../functions/_shared/contracts.ts";
 
 const env = (k: string, d?: string) => {
@@ -50,28 +54,53 @@ const createdConsentSecret = (await sql`
   select vault.create_secret(${"e2e-" + crypto.randomUUID() + crypto.randomUUID()}, ${CONSENT_SECRET_NAME})
    where not exists (select 1 from vault.secrets where name = ${CONSENT_SECRET_NAME})`).length > 0;
 
+/** HMAC-SHA256(secreto de Vault, "email:" + email normalizado) en hex (M1). */
+const emailHash = async (email: string) =>
+  (await sql`select encode(extensions.hmac(${
+    "email:" + email.trim().toLowerCase()
+  }, decrypted_secret, 'sha256'), 'hex') as h
+               from vault.decrypted_secrets where name = ${CONSENT_SECRET_NAME}`)[0].h as string;
+
 /** HMAC-SHA256(secreto de Vault, user_id) en hex, calculado por Postgres. */
 const consentHash = async (userId: string) =>
   (await sql`select encode(extensions.hmac(${userId}, decrypted_secret, 'sha256'), 'hex') as h
                from vault.decrypted_secrets where name = ${CONSENT_SECRET_NAME}`)[0].h as string;
 
-// Worker falso: verifica la firma del despacho (la misma que la del callback) y guarda cada JobDispatch.
-const dispatches = new Map<string, JobDispatch>();
+// Worker falso: verifica la firma del aviso de despacho y guarda cada JobDispatchNotice (A3: es lo único que
+// pasaría por la cola del proveedor de GPU).
+const notices = new Map<string, JobDispatchNotice>();
 const worker = Deno.serve({ port: WORKER_PORT, hostname: "0.0.0.0", onListen: () => {} }, async (req) => {
   const raw = await req.text();
   if (!(await verifyRequest(DISPATCH_SECRET, raw, req.headers))) return new Response(null, { status: 401 });
-  const d = JSON.parse(raw) as JobDispatch;
-  dispatches.set(d.job_id, d);
+  const n = JSON.parse(raw) as JobDispatchNotice;
+  notices.set(n.job_id, n);
   return new Response(null, { status: 202 });
 });
 
-async function waitForDispatch(jobId: string): Promise<JobDispatch> {
+async function waitForNotice(jobId: string): Promise<JobDispatchNotice> {
   for (let i = 0; i < 50; i++) {
-    const d = dispatches.get(jobId);
-    if (d) return d;
+    const n = notices.get(jobId);
+    if (n) return n;
     await new Promise((r) => setTimeout(r, 200));
   }
   throw new Error(`job ${jobId} was never dispatched`);
+}
+
+/** Lo que hace el contenedor del worker: pedir el JobDispatch completo a job-dispatch con una petición firmada. */
+async function fetchDispatch(notice: JobDispatchNotice, secret = CALLBACK_SECRET) {
+  const raw = JSON.stringify({ job_id: notice.job_id, attempt: notice.attempt });
+  const res = await fetch(`${URL_}/functions/v1/job-dispatch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await signedHeaders(secret, raw)) },
+    body: raw,
+  });
+  return { status: res.status, body: await res.json(), headers: res.headers };
+}
+
+async function waitForDispatch(jobId: string): Promise<JobDispatch> {
+  const fetched = await fetchDispatch(await waitForNotice(jobId));
+  assert.equal(fetched.status, 200, JSON.stringify(fetched.body));
+  return fetched.body as JobDispatch;
 }
 
 async function callFn(name: string, token: string | null, body: unknown, method = "POST") {
@@ -125,9 +154,16 @@ Deno.test({
     const token = session.session!.access_token;
     let otherId = "";
 
+    // M1: la app solo envía el tratamiento; versión y fecha las pone el servidor.
+    const backdated = await user.from("consents").insert({ purpose: "body_scan", granted_at: "2020-01-01T00:00:00Z" });
+    assert.ok(backdated.error, "la app no puede fijar la fecha del consentimiento");
     const { data: consent, error: consErr } = await user.from("consents")
-      .insert({ purpose: "body_scan", text_version: "body_scan-test" }).select("id").single();
+      .insert({ purpose: "body_scan" }).select("id, text_version, granted_at").single();
     assert.ifError(consErr);
+    const { data: currentText } = await user.from("consent_texts").select("version, sha256")
+      .eq("purpose", "body_scan").order("published_at", { ascending: false }).limit(1).single();
+    assert.equal(consent!.text_version, currentText!.version, "versión vigente de consent_texts");
+    assert.ok(Math.abs(Date.parse(consent!.granted_at) - Date.now()) < 60_000, "fecha del servidor");
 
     const avatarRequest = (name: string) => ({
       type: "avatar",
@@ -178,7 +214,20 @@ Deno.test({
 
       const marked = await callFn("create-job/uploaded", token, { job_id: jobId });
       assert.equal(marked.status, 200);
-      const d = await waitForDispatch(jobId);
+
+      // A3: el aviso que llega al proveedor de GPU solo lleva identificadores.
+      const notice = await waitForNotice(jobId);
+      assert.deepEqual(Object.keys(notice).sort(), ["attempt", "contracts_version", "dispatch_url", "job_id", "type"]);
+      assert.ok(validate.jobDispatchNotice(notice).ok);
+      assert.ok(!JSON.stringify(notice).includes(uid), "el aviso no lleva el user_id");
+      const forgedFetch = await fetchDispatch(notice, "otro-secreto");
+      assert.equal(forgedFetch.status, 401, "job-dispatch exige la firma del worker");
+      const fetched = await fetchDispatch(notice);
+      assert.equal(fetched.status, 200, JSON.stringify(fetched.body));
+      assert.equal(fetched.headers.get("cache-control"), "no-store");
+      const d = fetched.body as JobDispatch;
+      const replay = await fetchDispatch(notice);
+      assert.equal(replay.status, 409, "B4: el despacho se entrega una sola vez por intento");
       assert.equal(d.attempt, 1);
       assert.equal(d.type, "avatar");
       assert.equal(d.user_id, uid, "el dispatch lleva el dueño del job");
@@ -289,7 +338,9 @@ Deno.test({
       const { data: job } = await user.from("jobs").select("*").eq("id", jobId).single();
       assert.equal(job!.status, "succeeded");
       assert.ok(job!.input_deleted_at, "la API anota el borrado en jobs.input_deleted_at");
-      assert.equal(job!.output.input_deleted_at, undefined, "el borrado no forma parte de la salida del worker");
+      // A1: jobs no guarda copias: ni medidas ni forma en output, ni altura ni ruta de la foto en input.
+      assert.deepEqual(job!.output, { avatar_id: output.avatar.id });
+      assert.deepEqual(job!.input, { consent_id: consent!.id });
       assert.equal(job!.fake, false);
       const { data: avatars } = await user.from("avatars").select("glb_path");
       assert.deepEqual(avatars, [{ glb_path: glb.path }]);
@@ -312,7 +363,7 @@ Deno.test({
       );
       assert.ifError(up.error);
       await callFn("create-job/uploaded", token, { job_id: id });
-      await waitForDispatch(id);
+      const d = await waitForDispatch(id);
       const failed = await callback({
         job_id: id,
         attempt: 1,
@@ -322,16 +373,47 @@ Deno.test({
       });
       assert.equal(failed.status, 200, JSON.stringify(failed.body));
       assert.deepEqual(await rawObjects(uid), []);
-      const { data: job } = await user.from("jobs").select("status, error").eq("id", id).single();
+      const { data: job } = await user.from("jobs").select("status, error, input, output").eq("id", id).single();
       assert.equal(job!.status, "failed");
       assert.equal(job!.error.code, "pose_invalid");
+      assert.deepEqual(job!.input, { consent_id: consent!.id }, "A1: la entrada del job fallido se reduce a ids");
+      assert.equal(job!.output, null);
+
+      // M2: la URL de subida del worker ya no sirve cuando el job terminó.
+      const late = await fetch(d.output_uploads[0].upload_url, {
+        method: "PUT",
+        headers: { "content-type": "model/gltf-binary" },
+        body: GLB,
+      });
+      await late.body?.cancel();
+      assert.notEqual(late.status, 200, "una subida tardía del worker no debe crear ficheros");
+      // B5: la URL de subida de la foto tampoco vuelve a servir aunque la foto ya se borró.
+      const again = await user.storage.from("raw-uploads").uploadToSignedUrl(
+        `${uid}/mala.jpg`,
+        created.body.uploads[0].token,
+        JPEG,
+        { contentType: "image/jpeg" },
+      );
+      assert.ok(again.error, "la URL de subida de la foto volvió a servir tras cerrar el job");
+      assert.deepEqual(await rawObjects(uid), []);
     });
 
     await t.step("barrido: las fotos de más de 60 min se borran aunque su job no haya terminado", async () => {
+      // M2: ni siquiera la clave de servicio sube a raw-uploads algo que ningún job en cola espera.
+      const stray = await admin.storage.from("raw-uploads").upload(`${uid}/suelta.jpg`, JPEG, {
+        contentType: "image/jpeg",
+      });
+      assert.ok(stray.error, "Storage aceptó una foto que ningún job espera");
+      // Dos jobs con su foto subida que no se marcan como subidos (se quedan en cola).
       for (const n of ["vieja", "nueva"]) {
-        const r = await admin.storage.from("raw-uploads").upload(`${uid}/${n}.jpg`, JPEG, {
-          contentType: "image/jpeg",
-        });
+        const c = await callFn("create-job", token, avatarRequest(n));
+        assert.equal(c.status, 201, JSON.stringify(c.body));
+        const r = await user.storage.from("raw-uploads").uploadToSignedUrl(
+          `${uid}/${n}.jpg`,
+          c.body.uploads[0].token,
+          JPEG,
+          { contentType: "image/jpeg" },
+        );
         assert.ifError(r.error);
       }
       await sql`update storage.objects set created_at = now() - interval '61 minutes'
@@ -369,7 +451,7 @@ Deno.test({
       const otherClient = createClient(URL_, ANON, { auth: { persistSession: false } });
       assert.ifError((await otherClient.auth.signInWithPassword({ email: otherEmail, password })).error);
       const { data: otherConsent } = await otherClient.from("consents")
-        .insert({ purpose: "personalization", text_version: "other-v1" }).select("id").single();
+        .insert({ purpose: "personalization" }).select("id").single();
       const { data: otherGarment } = await otherClient.from("garments").insert({ name: "ajena" }).select("id").single();
       assert.ok(otherConsent && otherGarment);
 
@@ -420,7 +502,8 @@ Deno.test({
       assert.deepEqual(exp.garments.map((g) => g.id), [garment!.id]);
       assert.equal(exp.user_fit_preferences?.default_fit, "relaxed");
       assert.equal(exp.outfits.length, 1);
-      assert.equal(exp.jobs.length, 2);
+      assert.equal(exp.jobs.length, 4);
+      assert.deepEqual(exp.garment_embeddings, []);
 
       // Solo datos propios: todos los user_id son el suyo y nada del otro usuario aparece.
       const sections = [exp.consents, exp.avatars, exp.color_profiles, exp.garments, exp.fit_results, exp.outfits];
@@ -432,13 +515,15 @@ Deno.test({
         assert.ok(!text.includes(foreign), "la exportación contiene datos de otro usuario");
       }
 
-      // Sin rutas internas: ni fotos, ni referencias storage://, ni output de los jobs.
+      // Sin rutas internas: ni fotos ni referencias storage://. Los jobs se exportan con lo que queda (A1).
       assert.ok(!text.includes("raw-uploads"), "la exportación lleva rutas de raw-uploads");
       assert.ok(!text.includes("storage://"), "la exportación lleva referencias storage://");
       assert.ok(!/"[a-z_]+_paths?"\s*:/.test(text), "la exportación lleva columnas *_path");
       for (const j of exp.jobs) {
-        assert.equal((j as unknown as Record<string, unknown>).output, undefined);
         assert.equal((j.input as Record<string, unknown>).photo_path, undefined);
+        if (j.status === "succeeded") assert.deepEqual(j.output, { avatar_id: exp.avatars[0].id });
+        else assert.equal(j.output, null);
+        if (j.status !== "queued") assert.deepEqual(j.input, { consent_id: consent!.id });
       }
 
       // Las URLs firmadas descargan los ficheros.
@@ -487,6 +572,7 @@ Deno.test({
       const a = archived[0];
       assert.deepEqual(Object.keys(a).sort(), [
         "archived_at",
+        "email_hash",
         "granted_at",
         "purpose",
         "text_version",
@@ -494,7 +580,9 @@ Deno.test({
         "withdrawn_at",
       ]);
       assert.equal(a.purpose, "body_scan");
-      assert.equal(a.text_version, "body_scan-test");
+      assert.equal(a.text_version, consent!.text_version);
+      assert.equal(a.email_hash, await emailHash(email), "M1: el registro se encuentra por el email de quien reclama");
+      assert.ok(!JSON.stringify(a).includes(email), "el archivo contiene el email en claro");
       assert.ok(a.withdrawn_at, "el vigente se archiva con la fecha de la baja como retirada");
       assert.ok(!JSON.stringify(a).includes(uid), "el archivo contiene el user_id en claro");
 

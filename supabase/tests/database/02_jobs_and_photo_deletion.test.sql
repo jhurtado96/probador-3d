@@ -9,8 +9,8 @@ select plan(46);
 select pg_temp.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'a@test.local');
 select pg_temp.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'b@test.local');
 
-insert into public.consents (id, user_id, purpose, text_version) values
-  ('c0000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan', 'v1');
+insert into public.consents (id, user_id, purpose) values
+  ('c0000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan');
 
 -- ---------------------------------------------------------------------------
 -- Despacho: solo se reservan jobs cuyas fotos ya están en raw-uploads

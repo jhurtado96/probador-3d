@@ -29,7 +29,13 @@ export const env = {
   /** URL pública de job-callback que se envía al worker (por defecto, la del proyecto). */
   jobCallbackUrl: () => optionalEnv("JOB_CALLBACK_URL") ?? `${requireEnv("SUPABASE_URL")}/functions/v1/job-callback`,
 
-  /** Endpoint web de Modal (región UE) que recibe JobDispatch. Sin él no se despacha. */
+  /**
+   * URL pública de job-dispatch, donde el contenedor del worker pide el JobDispatch completo
+   * (por defecto, la del proyecto). Va en el aviso de despacho (A3).
+   */
+  jobDispatchUrl: () => optionalEnv("JOB_DISPATCH_URL") ?? `${requireEnv("SUPABASE_URL")}/functions/v1/job-dispatch`,
+
+  /** Endpoint web de Modal (región UE) que recibe el aviso de despacho (JobDispatchNotice). Sin él no se despacha. */
   workerDispatchUrl: () => optionalEnv("WORKER_DISPATCH_URL"),
 
   /** Secreto con el que pg_cron llama a la función maintenance. */

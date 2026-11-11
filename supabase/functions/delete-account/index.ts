@@ -3,10 +3,13 @@
 // Cuerpo: { "confirm": "DELETE" }  (evita borrados por error).
 //   0. Comprueba que el archivo de consentimientos está configurado (secreto
 //      consent_pseudonym_secret en Vault); si no, no borra nada (500).
-//   1. Borra TODOS los objetos de Storage del usuario (raw-uploads y assets,
+//   1. Cancela los jobs en cola o en curso (M2): desde ese momento el guard de
+//      Storage rechaza cualquier subida pendiente (de la app o del worker), así
+//      que no pueden aparecer ficheros nuevos entre el vaciado y la baja.
+//   2. Borra TODOS los objetos de Storage del usuario (raw-uploads y assets,
 //      carpeta <user_id>/ y cualquier objeto cuyo owner sea él) por la API de
 //      Storage, y comprueba que no queda ninguno.
-//   2. Borra el usuario de Auth. Las claves foráneas en cascada eliminan
+//   3. Borra el usuario de Auth. Las claves foráneas en cascada eliminan
 //      profiles, consents, avatars, color_profiles, garments,
 //      garment_measurements, fit_results, user_fit_preferences, outfits,
 //      drape_cache, jobs, job_runs y data_export_requests. Antes de que cada
@@ -14,7 +17,8 @@
 //      copia un registro mínimo seudonimizado (HMAC del user_id) a
 //      consent_records_archive, bloqueado 3 años (docs/architecture.md §7, D6),
 //      en la misma transacción: si el archivo falla, no se borra el usuario.
-// Si algo falla en 1, no se borra el usuario: la petición se puede repetir.
+// Si algo falla en 1 o 2, no se borra el usuario: la petición se puede repetir.
+// Logs (B7): nunca el user_id, solo un identificador aleatorio de la petición.
 // Las copias de seguridad del proveedor caducan según su retención (README).
 
 import { handler, HttpError, json, readJson } from "../_shared/http.ts";
@@ -42,13 +46,19 @@ Deno.serve(handler(async (req) => {
     throw new HttpError(500, "internal", "consent archive is not configured; nothing was deleted");
   }
 
+  const requestId = crypto.randomUUID();
+
+  // 1. Jobs: cancelar antes de tocar Storage.
+  const { data: canceled, error: cancelErr } = await admin.rpc("cancel_user_jobs", { p_user_id: user.id });
+  if (cancelErr) throw cancelErr;
+
   const listObjects = async () => {
     const { data, error } = await admin.rpc("user_storage_objects", { p_user_id: user.id });
     if (error) throw error;
     return (data ?? []) as Array<{ bucket_id: string; name: string }>;
   };
 
-  // 1. Storage
+  // 2. Storage
   const objects = await listObjects();
   const byBucket = new Map<string, string[]>();
   for (const o of objects) byBucket.set(o.bucket_id, [...(byBucket.get(o.bucket_id) ?? []), o.name]);
@@ -57,14 +67,14 @@ Deno.serve(handler(async (req) => {
 
   const left = await listObjects();
   if (left.length > 0) {
-    console.error("account deletion: storage objects remain", { user_id: user.id, left: left.length });
+    console.error("account deletion: storage objects remain", { request_id: requestId, left: left.length });
     throw new HttpError(500, "storage_not_empty", "some files could not be deleted; retry");
   }
 
-  // 2. Auth + cascada en Postgres
+  // 3. Auth + cascada en Postgres
   const { error } = await admin.auth.admin.deleteUser(user.id, false);
   if (error) throw new HttpError(500, "auth_delete_failed", error.message);
 
-  console.info("account deleted", { user_id: user.id, storage_objects: removed });
+  console.info("account deleted", { request_id: requestId, storage_objects: removed, jobs_canceled: canceled });
   return json({ deleted: true, storage_objects_deleted: removed });
 }));

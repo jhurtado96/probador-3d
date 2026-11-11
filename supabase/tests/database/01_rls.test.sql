@@ -14,9 +14,9 @@ select is((select count(*) from public.profiles
             where id in ('aaaaaaaa-0000-4000-8000-000000000001', 'bbbbbbbb-0000-4000-8000-000000000002'))::int,
           2, 'el alta en Auth crea el perfil');
 
-insert into public.consents (id, user_id, purpose, text_version) values
-  ('c0000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan', 'v1'),
-  ('c0000000-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-000000000002', 'body_scan', 'v1');
+insert into public.consents (id, user_id, purpose) values
+  ('c0000000-0000-4000-8000-00000000000a', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan'),
+  ('c0000000-0000-4000-8000-00000000000b', 'bbbbbbbb-0000-4000-8000-000000000002', 'body_scan');
 
 insert into public.avatars (id, user_id, body_model, model_version, shape, measurements, measurements_source,
                             glb_path, pose, shape_hash, confidence)
@@ -142,10 +142,10 @@ select throws_ok($$ update public.avatars set confidence = 1 $$, '42501', null,
                  'avatars: solo measurements_override es editable');
 select lives_ok($$ update public.avatars set measurements_override = '{"waist_cm": 81}' $$,
                 'avatars: corregir medidas (rectificación)');
-select throws_ok($$ insert into public.consents (user_id, purpose, text_version)
-                    values ('bbbbbbbb-0000-4000-8000-000000000002', 'analytics', 'v1') $$,
+select throws_ok($$ insert into public.consents (user_id, purpose)
+                    values ('bbbbbbbb-0000-4000-8000-000000000002', 'analytics') $$,
                  '42501', null, 'no puede otorgar consentimientos en nombre de otro');
-select lives_ok($$ insert into public.consents (purpose, text_version) values ('analytics', 'v1') $$,
+select lives_ok($$ insert into public.consents (purpose) values ('analytics') $$,
                 'otorga su propio consentimiento (user_id = auth.uid() por defecto)');
 select throws_ok($$ update public.consents set purpose = 'analytics' $$, '42501', null,
                  'consents: solo withdrawn_at es editable');

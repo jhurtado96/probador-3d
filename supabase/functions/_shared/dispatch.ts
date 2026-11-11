@@ -1,5 +1,12 @@
-// Despacho de jobs al worker GPU (Modal, región UE) con un JobDispatch.
-// El worker no recibe credenciales: solo URLs firmadas de vida corta.
+// Despacho de jobs al worker GPU (Modal, región UE).
+//
+// A3 (revisión de la fase 0): lo único que pasa por la cola del proveedor de
+// GPU es un JobDispatchNotice sin datos personales (job_id, tipo, intento y la
+// URL de job-dispatch). El contenedor pide después el JobDispatch completo
+// (entrada, URLs firmadas y contexto) a la Edge Function job-dispatch con una
+// petición firmada; `buildDispatch` lo construye en ese momento, y la API lo
+// entrega una sola vez por intento (claim_job_dispatch_fetch). El worker no
+// recibe credenciales: solo URLs firmadas de vida corta.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -8,6 +15,7 @@ import {
   type DrapeJobInput,
   type GarmentJobInput,
   type JobDispatch,
+  type JobDispatchNotice,
   type JobType,
   type SignedUpload,
   validate,
@@ -116,6 +124,65 @@ async function drapeContext(
 
 export type DispatchOutcome = { job_id: string; ok: true } | { job_id: string; ok: false; error: string };
 
+/**
+ * JobDispatch completo de un intento ya despachado y reservado para entrega
+ * (claim_job_dispatch_fetch). Firma las URLs de descarga y de subida y
+ * autoriza las rutas de salida. Solo lo llama job-dispatch cuando el
+ * contenedor del worker lo pide, para que nada de esto pase por la cola de GPU.
+ */
+export async function buildDispatch(admin: SupabaseClient, job: ClaimedJob): Promise<JobDispatch> {
+  const outputs = planOutputs(job);
+  // Autorizar las rutas de salida ANTES de firmar sus URLs: Storage comprueba al firmar (y al subir) que el guard
+  // de storage.objects admite la ruta (M2), y el callback solo acepta rutas autorizadas.
+  const { error: pathsError } = await admin.rpc("set_job_output_paths", {
+    p_job_id: job.id,
+    p_attempt: job.attempt,
+    p_output_paths: outputs.map((o) => o.path),
+  });
+  if (pathsError) throw new Error(`set_job_output_paths: ${pathsError.message}`);
+
+  // URLs de subida de los artefactos de salida.
+  const output_uploads: SignedUpload[] = [];
+  for (const o of outputs) {
+    const { bucket, name } = splitPath(o.path);
+    // Sin upsert: una sola subida por ruta. La URL caduca a las 2 h (límite fijo de Supabase), pero el
+    // guard de Storage la invalida en cuanto el job deja de estar activo (M2).
+    const { data, error } = await admin.storage.from(bucket).createSignedUploadUrl(name);
+    if (error || !data) throw new Error(`signed upload url: ${error?.message}`);
+    output_uploads.push({ ...o, upload_url: publicUrl(data.signedUrl) });
+  }
+
+  // Rutas de entrada: las fotos de raw-uploads y, en el drapeado, las del contexto.
+  const drape = job.type === "drape" ? await drapeContext(admin, job) : null;
+
+  // URLs de descarga de las entradas, indexadas por ruta.
+  const input_urls: Record<string, string> = {};
+  for (const path of [...job.input_paths, ...(drape?.paths ?? [])]) {
+    const { bucket, name } = splitPath(path);
+    const { data, error } = await admin.storage.from(bucket).createSignedUrl(name, INPUT_URL_TTL_SECONDS);
+    if (error || !data) throw new Error(`signed download url: ${error?.message}`);
+    input_urls[path] = publicUrl(data.signedUrl);
+  }
+
+  // `input` viene de la base de datos (ya validado al crear el job); la unión
+  // discriminada se comprueba en ejecución contra el JSON Schema.
+  const dispatch = {
+    job_id: job.id,
+    user_id: job.user_id,
+    type: job.type,
+    input: job.input,
+    ...(drape ? { context: drape.context } : {}),
+    input_urls,
+    output_uploads,
+    callback_url: env.jobCallbackUrl(),
+    attempt: job.attempt,
+    contracts_version: CONTRACTS_VERSION,
+  } as unknown as JobDispatch;
+  const check = validate.jobDispatch(dispatch);
+  if (!check.ok) throw new Error(`JobDispatch does not match contract: ${JSON.stringify(check.errors)}`);
+  return check.value;
+}
+
 async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<DispatchOutcome> {
   const workerUrl = env.workerDispatchUrl();
   const release = async (error: string): Promise<DispatchOutcome> => {
@@ -129,56 +196,19 @@ async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<
   if (!secret) return await release("PROBADOR_DISPATCH_SECRET is not configured");
 
   try {
-    // URLs de subida de los artefactos de salida.
-    const outputs = planOutputs(job);
-    const output_uploads: SignedUpload[] = [];
-    for (const o of outputs) {
-      const { bucket, name } = splitPath(o.path);
-      // Sin upsert: una sola subida por ruta. La URL caduca a las 2 h (límite fijo de Supabase).
-      const { data, error } = await admin.storage.from(bucket).createSignedUploadUrl(name);
-      if (error || !data) throw new Error(`signed upload url: ${error?.message}`);
-      output_uploads.push({ ...o, upload_url: publicUrl(data.signedUrl) });
-    }
-
-    // Rutas de entrada: las fotos de raw-uploads y, en el drapeado, las del contexto.
-    const drape = job.type === "drape" ? await drapeContext(admin, job) : null;
-
-    // URLs de descarga de las entradas, indexadas por ruta.
-    const input_urls: Record<string, string> = {};
-    for (const path of [...job.input_paths, ...(drape?.paths ?? [])]) {
-      const { bucket, name } = splitPath(path);
-      const { data, error } = await admin.storage.from(bucket).createSignedUrl(name, INPUT_URL_TTL_SECONDS);
-      if (error || !data) throw new Error(`signed download url: ${error?.message}`);
-      input_urls[path] = publicUrl(data.signedUrl);
-    }
-
-    // Autorizar estas rutas de salida ANTES de que el worker pueda llamar de vuelta.
-    const { error: pathsError } = await admin.rpc("set_job_output_paths", {
-      p_job_id: job.id,
-      p_attempt: job.attempt,
-      p_output_paths: outputs.map((o) => o.path),
-    });
-    if (pathsError) throw new Error(`set_job_output_paths: ${pathsError.message}`);
-
-    // `input` viene de la base de datos (ya validado al crear el job); la unión
-    // discriminada se comprueba en ejecución contra el JSON Schema.
-    const dispatch = {
+    // Solo identificadores: es lo único que ve la cola del proveedor de GPU.
+    const notice: JobDispatchNotice = {
       job_id: job.id,
-      user_id: job.user_id,
       type: job.type,
-      input: job.input,
-      ...(drape ? { context: drape.context } : {}),
-      input_urls,
-      output_uploads,
-      callback_url: env.jobCallbackUrl(),
       attempt: job.attempt,
+      dispatch_url: env.jobDispatchUrl(),
       contracts_version: CONTRACTS_VERSION,
-    } as unknown as JobDispatch;
-    const check = validate.jobDispatch(dispatch);
-    if (!check.ok) throw new Error(`JobDispatch does not match contract: ${JSON.stringify(check.errors)}`);
+    };
+    const check = validate.jobDispatchNotice(notice);
+    if (!check.ok) throw new Error(`JobDispatchNotice does not match contract: ${JSON.stringify(check.errors)}`);
 
     // Misma firma que el callback: timestamp + HMAC del cuerpo exacto que se envía.
-    const body = JSON.stringify(dispatch);
+    const body = JSON.stringify(notice);
     const res = await fetch(workerUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await signedHeaders(secret, body)) },
@@ -194,8 +224,8 @@ async function dispatchClaimed(admin: SupabaseClient, job: ClaimedJob): Promise<
 }
 
 /**
- * Reserva y despacha jobs en cola cuyas fotos ya están subidas. Sin
- * WORKER_DISPATCH_URL no reserva nada (los jobs esperan en cola).
+ * Reserva y despacha (con un aviso) los jobs en cola cuyas fotos ya están
+ * subidas. Sin WORKER_DISPATCH_URL no reserva nada (los jobs esperan en cola).
  */
 export async function dispatchQueued(
   admin: SupabaseClient,

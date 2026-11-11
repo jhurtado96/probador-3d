@@ -8,8 +8,8 @@ select plan(38);
 -- La tabla de archivo: exactamente los campos decididos, bloqueada
 -- ---------------------------------------------------------------------------
 select columns_are('public', 'consent_records_archive',
-  array['user_hash', 'purpose', 'text_version', 'granted_at', 'withdrawn_at', 'archived_at'],
-  'el archivo solo tiene hash, tratamiento, versión, concesión, retirada y fecha de archivo');
+  array['user_hash', 'email_hash', 'purpose', 'text_version', 'granted_at', 'withdrawn_at', 'archived_at'],
+  'el archivo solo tiene seudónimos (user_id y email), tratamiento, versión, concesión, retirada y fecha de archivo');
 select hasnt_column('public', 'consent_records_archive', 'user_id', 'el archivo no tiene user_id');
 
 select ok((select relrowsecurity from pg_class where oid = 'public.consent_records_archive'::regclass),
@@ -34,18 +34,22 @@ select ok(obj_description('public.consent_records_archive'::regclass, 'pg_class'
 select pg_temp.create_user('aaaaaaaa-0000-4000-8000-000000000001', 'a@test.local');
 select pg_temp.create_user('bbbbbbbb-0000-4000-8000-000000000002', 'b@test.local');
 
-insert into public.consents (id, user_id, purpose, text_version, granted_at) values
-  ('c0000000-0000-4000-8000-0000000000a1', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan', 'body_scan-v1',
-   now() - interval '10 days'),
-  ('c0000000-0000-4000-8000-0000000000a2', 'aaaaaaaa-0000-4000-8000-000000000001', 'color_analysis', 'color-v2',
-   now() - interval '5 days'),
-  ('c0000000-0000-4000-8000-0000000000b1', 'bbbbbbbb-0000-4000-8000-000000000002', 'body_scan', 'body_scan-v1',
-   now() - interval '3 days');
+-- Fixtures con fechas pasadas: los triggers que fijan la hora del servidor (M1)
+-- se desactivan solo para preparar los datos (se deshace con la transacción).
+alter table public.consents disable trigger consents_server_fields;
+alter table public.consents disable trigger consents_immutable_proof;
+insert into public.consents (id, user_id, purpose, text_version, granted_at, withdrawn_at) values
+  ('c0000000-0000-4000-8000-0000000000a1', 'aaaaaaaa-0000-4000-8000-000000000001', 'body_scan',
+   'body_scan-2026-11-draft', now() - interval '10 days', now() - interval '2 days'),
+  ('c0000000-0000-4000-8000-0000000000a2', 'aaaaaaaa-0000-4000-8000-000000000001', 'color_analysis',
+   'color_analysis-2026-11-draft', now() - interval '5 days', null),
+  ('c0000000-0000-4000-8000-0000000000b1', 'bbbbbbbb-0000-4000-8000-000000000002', 'body_scan',
+   'body_scan-2026-11-draft', now() - interval '3 days', null);
+alter table public.consents enable trigger consents_server_fields;
+alter table public.consents enable trigger consents_immutable_proof;
 
--- Retirada en vida (como la app, con RLS): la fila se queda en consents y no se archiva.
+-- Retirada en vida (ya hecha en el fixture): la fila se queda en consents y no se archiva.
 select pg_temp.login_as('aaaaaaaa-0000-4000-8000-000000000001');
-update public.consents set withdrawn_at = now() - interval '2 days'
- where id = 'c0000000-0000-4000-8000-0000000000a1';
 select throws_ok($$ select * from public.consent_records_archive $$, '42501', null,
                  'un usuario autenticado no puede leer el archivo');
 select throws_ok($$ insert into public.consent_records_archive (user_hash, purpose, text_version, granted_at, withdrawn_at)
@@ -97,7 +101,7 @@ select is((select count(*)::int from public.consent_records_archive a
           0, 'ningún campo archivado contiene el user_id ni el id del consentimiento');
 select results_eq(
   $$ select purpose::text, text_version from public.consent_records_archive order by purpose $$,
-  $$ values ('body_scan', 'body_scan-v1'), ('color_analysis', 'color-v2') $$,
+  $$ values ('body_scan', 'body_scan-2026-11-draft'), ('color_analysis', 'color_analysis-2026-11-draft') $$,
   'se archivan tratamiento y versión del texto');
 select ok((select withdrawn_at = granted_at + interval '8 days' and granted_at < now() - interval '9 days'
              from public.consent_records_archive where purpose = 'body_scan'),

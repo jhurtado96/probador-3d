@@ -3,9 +3,10 @@
 // Devuelve un DataExport (packages/contracts) con todos los datos del usuario:
 // cuenta, perfil, consentimientos, avatares con medidas, perfiles de color,
 // prendas con medidas, fit_results, user_fit_preferences, outfits, caché de
-// drapeado y jobs (sin output ni rutas de Storage), más URLs firmadas de 1 h a
-// sus GLB, patrones, recortes y miniaturas. Las fotos originales no se
-// exportan porque no se conservan.
+// drapeado, embeddings de sus prendas y jobs (todo lo que queda de la fila:
+// entrada sin rutas de Storage y salida, que son solo ids; A1 y B11), más URLs
+// firmadas de 1 h a sus GLB, patrones, recortes y miniaturas. Las fotos
+// originales no se exportan porque no se conservan.
 //
 // Seguridad: las filas se leen con el JWT del usuario (RLS) y además se
 // filtran por su user_id; solo se firman rutas de su carpeta `assets/<uid>/`.
@@ -18,8 +19,12 @@ import {
   DATA_EXPORT_FORMAT,
   DATA_EXPORT_SIGNED_URL_TTL_SECONDS,
   type DataExport,
+  type DataExportGarmentEmbedding,
   type DataExportJob,
   type DataExportJobInput,
+  GARMENT_EMBEDDING_DIMENSIONS,
+  JOB_RETENTION_DAYS,
+  type JobResult,
   validate,
 } from "../_shared/contracts.ts";
 import { env } from "../_shared/env.ts";
@@ -32,9 +37,9 @@ const PAGE_SIZE = 1000;
 
 type Row = Record<string, unknown>;
 
-/** Columnas de jobs que se exportan: sin `output` (lleva rutas `storage://`). */
+/** Columnas de jobs que se exportan: todas las que ve el usuario (output son solo ids, A1). */
 const JOB_COLUMNS =
-  "id, type, status, progress, stage, input, error, attempts, worker_version, fake, input_deleted_at, created_at, started_at, finished_at";
+  "id, type, status, progress, stage, input, output, error, attempts, worker_version, fake, input_deleted_at, created_at, started_at, finished_at";
 
 const NOTES = [
   "Las fotos originales (cuerpo entero, selfie y fotos de prendas) no se conservan: se borran al terminar su " +
@@ -43,8 +48,11 @@ const NOTES = [
   "outfits[].preview_url y drape_cache[].glb_url) son temporales y caducan en signed_urls_expire_at. Una URL null " +
   "significa que el fichero ya no existe.",
   "Los GLB son glTF binario (malla en metros, Y arriba) y los patrones de costura son JSON de GarmentCode.",
-  "Los jobs se exportan sin su salida (los resultados están en las demás secciones) y sin las rutas internas de " +
-  "almacenamiento de las fotos.",
+  "Los jobs se exportan tal como se conservan: su salida son solo identificadores de lo que crearon (los datos están " +
+  "en las demás secciones) y, una vez terminados, su entrada se reduce a identificadores; las rutas internas de " +
+  `las fotos no se incluyen. Los jobs terminados se borran a los ${JOB_RETENTION_DAYS} días.`,
+  "garment_embeddings contiene el vector numérico que describe la imagen de cada prenda propia (se usa para " +
+  "recomendaciones y no se muestra en la app).",
   "Formato: JSON con el esquema DataExport de @probador/contracts, en la versión indicada en contracts_version.",
 ];
 
@@ -95,6 +103,14 @@ function withUrl(row: Row, column: string, signed: Map<string, string | null>): 
   return { ...rest, [`${column}_url`]: typeof path === "string" ? signed.get(path) ?? null : null };
 }
 
+/** pgvector llega por PostgREST como texto `[0.1,0.2,…]`. */
+function parseVector(v: unknown): number[] | null {
+  const arr = typeof v === "string" ? JSON.parse(v) : v;
+  return Array.isArray(arr) && arr.length === GARMENT_EMBEDDING_DIMENSIONS && arr.every((x) => typeof x === "number")
+    ? arr
+    : null;
+}
+
 /** Entrada del job sin rutas de Storage (`*_path`, `*_paths`). */
 function stripPaths(input: unknown): DataExportJobInput {
   const out: Row = {};
@@ -134,6 +150,7 @@ Deno.serve(handler(async (req) => {
     preferences,
     outfits,
     drapeCache,
+    embeddings,
     jobs,
   ] = await Promise.all([
     fetchOne(db.from("profiles").select("*").eq("id", uid).maybeSingle()),
@@ -157,6 +174,10 @@ Deno.serve(handler(async (req) => {
     fetchAll((a, b) => db.from("outfits").select("*").eq("user_id", uid).order("created_at").order("id").range(a, b)),
     fetchAll((a, b) =>
       db.from("drape_cache").select("*").eq("user_id", uid).order("created_at").order("id").range(a, b)
+    ),
+    fetchAll((a, b) =>
+      db.from("garments").select("id, embedding_model, embedding").eq("user_id", uid).not("embedding", "is", null)
+        .order("created_at").order("id").range(a, b)
     ),
     fetchAll((a, b) =>
       db.from("jobs")
@@ -197,7 +218,17 @@ Deno.serve(handler(async (req) => {
     user_fit_preferences: preferences,
     outfits: outfits.map((r) => withUrl(r, "preview", signed)),
     drape_cache: drapeCache.map((r) => withUrl(r, "glb", signed)),
-    jobs: jobs.map((j): DataExportJob => ({ ...(j as unknown as DataExportJob), input: stripPaths(j.input) })),
+    garment_embeddings: embeddings.flatMap((g): DataExportGarmentEmbedding[] => {
+      const vector = parseVector(g.embedding);
+      return vector && typeof g.embedding_model === "string"
+        ? [{ garment_id: g.id as string, model: g.embedding_model, vector }]
+        : [];
+    }),
+    jobs: jobs.map((j): DataExportJob => ({
+      ...(j as unknown as DataExportJob),
+      input: stripPaths(j.input),
+      output: (j.output ?? null) as JobResult | null,
+    })),
   };
 
   const checked = validate.dataExport(body);
