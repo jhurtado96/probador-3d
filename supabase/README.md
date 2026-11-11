@@ -26,18 +26,22 @@ supabase/
 │   ├── 20261111000300_rls.sql                    # RLS + privilegios por columna
 │   ├── 20261111000400_storage.sql                # buckets raw-uploads y assets + políticas
 │   ├── 20261111000500_job_queue.sql              # cola, complete_job, reaper, barridos, retirada de consentimiento
-│   └── 20261111000600_cron.sql                   # tareas pg_cron
+│   ├── 20261111000600_cron.sql                   # tareas pg_cron
+│   ├── 20261111000700_consent_archive.sql        # D6: archivo bloqueado y seudonimizado de consentimientos
+│   └── 20261111000800_data_export.sql            # D7: cuota de export-data
 ├── functions/
 │   ├── deno.json                    # mapa de imports (versiones fijadas) — también lo usan los tests e2e
 │   ├── .env.example                 # variables necesarias, sin valores
 │   ├── _shared/                     # contratos/Ajv, HMAC, Storage, despacho, cliente admin, HTTP
 │   ├── create-job/                  # POST: crea job, devuelve URL firmada de subida; /uploaded despacha
 │   ├── job-callback/                # POST del worker: HMAC, valida JobCallback, borra la foto, persiste
-│   ├── delete-account/              # DELETE: borrado total RGPD
+│   ├── delete-account/              # DELETE: borrado total RGPD (archiva antes los consentimientos)
+│   ├── export-data/                 # GET: exportación de datos en JSON (arts. 15 y 20 RGPD)
 │   └── maintenance/                 # POST desde pg_cron: despacho, borrado de fotos, barrido 60 min, GC
 └── tests/
-    ├── database/*.test.sql          # pgTAP: RLS, cola, persistencia, reintentos, consentimientos, cascada
-    └── e2e/photo_deletion.test.ts   # Deno: ciclo completo contra el stack local, ficheros incluidos
+    ├── database/*.test.sql          # pgTAP: RLS, cola, persistencia, reintentos, consentimientos, cascada,
+    │                                #        archivo de consentimientos (D6) y cuota de exportación (D7)
+    └── e2e/photo_deletion.test.ts   # Deno: ciclo completo contra el stack local, ficheros, exportación y baja
 ```
 
 ## Modelo de datos
@@ -49,7 +53,7 @@ Tablas en `public`, todas con RLS: `profiles` (los "users" del plan), `consents`
 
 - Columnas = campos del contrato en snake_case; objetos anidados en `jsonb`;
   enums de Postgres con los mismos valores que las constantes del contrato.
-  Todas las tablas tienen tipo en el contrato (v0.2.0), incluidas `profiles`
+  Todas las tablas tienen tipo en el contrato (v0.3.0), incluidas `profiles`
   (`Profile`), `consents` (`Consent`), `user_fit_preferences`
   (`UserFitPreferences`) y `drape_cache` (`DrapeCache`).
 - Excepción: los `*_url` del contrato que apuntan a Storage privado se guardan
@@ -69,7 +73,47 @@ Tablas en `public`, todas con RLS: `profiles` (los "users" del plan), `consents`
   `garments_with_measurements` (security_invoker) devuelve el Garment completo.
 - Embeddings: `garments.embedding vector(512)` (CLIP/FashionCLIP) con índice HNSW coseno.
   Llega en `GarmentJobOutput.embedding`; no se guarda en `jobs.output` ni se sirve a la app.
-- Todo cuelga de `auth.users` con `ON DELETE CASCADE`.
+- Todo cuelga de `auth.users` con `ON DELETE CASCADE`, salvo el archivo de
+  consentimientos (abajo).
+- `data_export_requests`: cuándo pidió cada usuario una exportación (cuota de
+  `export-data`); solo service_role, se purga a los 30 días.
+
+### Archivo de consentimientos (D6)
+
+Al borrar una fila de `consents` (la cascada de `delete-account`, un borrado del
+usuario desde el panel de Auth o cualquier `DELETE`), el trigger
+`consents_archive_before_delete` copia antes a `consent_records_archive` un
+registro mínimo: `user_hash` = HMAC-SHA256(secreto de Vault
+`consent_pseudonym_secret`, user_id) en hex, `purpose`, `text_version`,
+`granted_at`, `withdrawn_at` (la fecha de la baja si seguía vigente) y
+`archived_at`. Nada más: ni el user_id ni el id del consentimiento.
+
+- Bloqueado (art. 32 LOPDGDD; finalidad art. 7.1 RGPD, en el comentario SQL de
+  la tabla): RLS sin políticas, sin privilegios para anon/authenticated;
+  service_role solo puede leer. Nadie salvo el trigger y la purga escribe.
+- `consent-archive-purge` (pg_cron, diaria) borra lo que lleva más de 3 años archivado.
+- Sin el secreto en Vault la baja falla entera (no se pierde la prueba ni se
+  guarda el user_id en claro); `delete-account` lo comprueba antes de vaciar
+  Storage y responde 500 sin borrar nada.
+- Para atender una reclamación se calcula el HMAC del user_id que aporte la
+  persona o la autoridad y se busca por `user_hash`. El secreto no se puede
+  rotar sin perder esa correspondencia: guardar una copia fuera de la base de datos.
+- Retirar un consentimiento en vida no borra la fila (solo los datos
+  derivados): sigue en `consents` como prueba, el usuario la ve y la exporta, y
+  se archiva con su fecha real de retirada cuando se borra la cuenta.
+
+### Exportación de datos (D7)
+
+`GET export-data` (JWT del usuario) responde un `DataExport` del contrato:
+cuenta (id, email, alta), perfil, consentimientos, avatares con medidas,
+perfiles de color, prendas con medidas, fit_results, user_fit_preferences,
+outfits, caché de drapeado y jobs sin `output` ni rutas de fotos; los ficheros
+van como URLs firmadas de 1 h (`null` si el fichero ya no existe) y hay notas
+legibles (las fotos originales no se conservan). Lee con el JWT del usuario
+(RLS) y además filtra por su id; pagina de 1000 en 1000; valida la respuesta
+contra `data_export.schema.json` antes de enviarla (500 si no cuadra, sin
+registrar datos). Cuota: `DATA_EXPORT_DAILY_QUOTA` (5) por 24 h → 429
+`quota_exceeded`.
 
 Qué puede hacer la app con su JWT (resumen de RLS):
 
@@ -151,6 +195,7 @@ Edge Functions (`supabase secrets set` en la nube; `functions/.env` en local, ve
 | `JOB_CALLBACK_URL` | no | URL de callback enviada al worker (por defecto la del proyecto) |
 | `PUBLIC_SUPABASE_URL` | solo local | reescribe el origen de las URLs firmadas (dentro de Docker es `http://kong:8000`) |
 | `JOB_DAILY_QUOTA` | no (50) | jobs por usuario y 24 h |
+| `DATA_EXPORT_DAILY_QUOTA` | no (5) | exportaciones de datos por usuario y 24 h |
 | `DRAPE_SIMULATOR_VERSION` | no | entra en la clave de caché del drapeado |
 
 Vault de Postgres (para que pg_cron llame a `maintenance`), una vez por entorno:
@@ -158,10 +203,14 @@ Vault de Postgres (para que pg_cron llame a `maintenance`), una vez por entorno:
 ```sql
 select vault.create_secret('https://<ref>.supabase.co', 'project_url');   -- en local: 'http://kong:8000'
 select vault.create_secret('<mismo valor que MAINTENANCE_SECRET>', 'maintenance_secret');
+select vault.create_secret('<32+ caracteres aleatorios>', 'consent_pseudonym_secret');  -- D6
 ```
 
-Sin estos secretos `jobs-reap` sigue funcionando, pero no hay despacho por cron
-ni barrido de fotos (queda un `WARNING` en el log de Postgres).
+Sin los dos primeros `jobs-reap` sigue funcionando, pero no hay despacho por cron
+ni barrido de fotos (queda un `WARNING` en el log de Postgres). Sin
+`consent_pseudonym_secret` no se puede borrar ninguna cuenta con
+consentimientos (el secreto del seudónimo vive solo en Vault, no en las
+variables de las funciones; los tests pgTAP y e2e crean uno temporal si falta).
 
 ## Levantarlo en local
 
@@ -200,20 +249,19 @@ deno check --config functions/deno.json functions/*/index.ts tests/*/*.ts
 El e2e hace de worker falso en el puerto 8787: crea un usuario, pide un job,
 sube la foto con la URL firmada, recibe el `JobDispatch`, sube un GLB, manda
 callbacks (firma inválida, firma antigua, worker fake, fuera de contrato, intento viejo, éxito, fallo) y
-comprueba que la foto desaparece de Storage; después prueba el barrido de 60 min
-y que `delete-account` deja Storage vacío y borra el usuario.
+comprueba que la foto desaparece de Storage; después prueba el barrido de 60 min,
+que `export-data` devuelve un `DataExport` válido (URLs que descargan los
+ficheros, sin rutas internas, sin datos de un segundo usuario, cuota 429) y
+que `delete-account` deja Storage vacío, borra el usuario y deja su
+consentimiento archivado con el HMAC de su id.
 
 ## Pendiente / límites conocidos
 
 - `POST /consents` (registro de consentimientos) no es una función: la app
   inserta en `consents` con RLS. Si el texto legal tiene que validarse en
   servidor, añadir la función.
-- **Pendiente de implementar (decidido, ver registro de decisiones):** al borrar
-  la cuenta, los consentimientos no deben irse en cascada: se conserva un
-  registro mínimo seudonimizado y bloqueado durante 3 años. Hoy `delete-account`
-  borra también `consents`.
-- **Pendiente de implementar (decidido):** endpoint de exportación de datos en
-  JSON con URLs firmadas a los GLB (arts. 15 y 20 RGPD).
+- D6 (archivo de consentimientos) y D7 (`export-data`) están implementados;
+  falta la revisión legal del plazo de 3 años y del bloqueo antes del lanzamiento.
 - No probado contra un proyecto en la nube (`db push`/`functions deploy`): en
   local las funciones importan `packages/contracts` fuera de `supabase/` y
   funciona; confirmar que el empaquetado del deploy también lo incluye.

@@ -1,6 +1,6 @@
 # Arquitectura — Probador virtual 3D
 
-Estado: propuesta para la fase 0, reconciliada con la investigación y con la primera tanda de implementación · 2026-11-11 · Contratos: `packages/contracts` (v0.2.0) · Decisiones que cambian lo escrito al principio: [§7 Registro de decisiones](#7-registro-de-decisiones)
+Estado: propuesta para la fase 0, reconciliada con la investigación y con la primera tanda de implementación · 2026-11-11 · Contratos: `packages/contracts` (v0.3.0) · Decisiones que cambian lo escrito al principio: [§7 Registro de decisiones](#7-registro-de-decisiones)
 
 **Recomendación en una frase:** una sola app Expo (expo-router) para web, Android e iOS, con la escena 3D escrita una vez en React Three Fiber y renderizada con WebGL en web y con `expo-gl` en nativo; Supabase en la UE como backend (Auth, Postgres con RLS, Storage, Edge Functions como API) y workers GPU en Python sobre Modal en región UE; todo el 3D en un único perfil de GLB que no necesita descodificadores WASM.
 
@@ -151,7 +151,7 @@ Funciones (rutas bajo `/functions/v1/`; así quedaron implementadas en `supabase
 | `POST job-callback` | Recibe `JobCallback` del worker (firma HMAC con marca de tiempo), borra las entradas y persiste resultados |
 | `POST maintenance` | La llama `pg_cron`: despacho, borrado de fotos, barrido de 60 min y limpieza de ficheros huérfanos |
 | `DELETE delete-account` | Borrado total |
-| Exportación de datos | Decidida (§7, D7), pendiente de implementar |
+| `GET export-data` | Exportación de datos (arts. 15 y 20 RGPD): `DataExport` en JSON con URLs firmadas de 1 h; 5 por usuario y día (§7, D7) |
 
 Los consentimientos se registran y se retiran escribiendo en la tabla `consents` con RLS, sin función. Los errores de todas las funciones tienen la forma `ApiErrorBody` del contrato: `{ error: { code, message, details? } }`.
 
@@ -269,8 +269,8 @@ Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `crea
 
 ### Derechos del usuario
 
-- **Borrado total** (`delete-account`): elimina filas en cascada, todos los objetos de Storage del usuario, las entradas de `drape_cache` y el usuario de Auth; las copias de seguridad caducan según la retención del proveedor, que se documenta. Excepción decidida (§7, D6): de los consentimientos se conserva un registro mínimo, seudonimizado y bloqueado, durante 3 años. Pendiente de implementar: hoy la cascada los borra.
-- **Acceso y portabilidad**: exportación en JSON legible por máquina de todos los datos del usuario, con URLs firmadas temporales a sus GLB (§7, D7). Pendiente de implementar.
+- **Borrado total** (`delete-account`): elimina filas en cascada, todos los objetos de Storage del usuario, las entradas de `drape_cache` y el usuario de Auth; las copias de seguridad caducan según la retención del proveedor, que se documenta. Excepción (§7, D6): antes de borrar cada consentimiento se copia a `consent_records_archive` un registro mínimo, seudonimizado (HMAC del `user_id` con un secreto de Vault) y bloqueado, que pg_cron borra a los 3 años.
+- **Acceso y portabilidad**: `GET export-data` devuelve en JSON legible por máquina (tipo `DataExport` del contrato) todos los datos del usuario, con URLs firmadas de 1 hora a sus GLB y patrones (§7, D7).
 - **Rectificación**: medidas y estación de color editables a mano.
 - **Minimización**: no se guarda textura de cara ni de piel en el avatar del MVP; el avatar se muestra con un material neutro. Si en el futuro se añade textura realista, es un consentimiento nuevo y otro apartado de la EIPD.
 
@@ -332,7 +332,7 @@ Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `crea
 
 ## 7. Registro de decisiones
 
-**Decisión: lo que sigue prevalece sobre cualquier frase anterior de este documento, de los README o de la skill que diga otra cosa.** Cada entrada lleva fecha, decisión, motivo y alternativa descartada. Las cuatro primeras salen de la investigación de la fase 0 (`docs/research/`); D5 es la reconciliación entre contratos, backend y workers; D6 a D8 son decisiones legales y de producto tomadas por el usuario.
+**Decisión: lo que sigue prevalece sobre cualquier frase anterior de este documento, de los README o de la skill que diga otra cosa.** Cada entrada lleva fecha, decisión, motivo y alternativa descartada. Las cuatro primeras salen de la investigación de la fase 0 (`docs/research/`); D5 es la reconciliación entre contratos, backend y workers; D6 a D8 son decisiones legales y de producto tomadas por el usuario (D6 y D7, implementadas).
 
 ### D1 · Avatar independiente de la topología del modelo corporal · 2026-11-11
 
@@ -370,14 +370,14 @@ Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `crea
 - **Decisión:** al borrar la cuenta los consentimientos no se borran en cascada. Se conserva un registro mínimo y seudonimizado — hash del `user_id`, tratamiento, versión del texto, fechas de concesión y de retirada, y nada más — en estado bloqueado (art. 32 LOPDGDD: solo accesible para atender a autoridades o reclamaciones) durante 3 años, el plazo de prescripción de las infracciones muy graves, y después se borra.
 - **Motivo:** el art. 7.1 del RGPD obliga a poder demostrar que el usuario consintió, también después de que se haya ido.
 - **Alternativa descartada:** borrar los consentimientos con el resto de la cuenta, que es lo que hace hoy `delete-account`.
-- **Estado:** pendiente de implementar. Se recomienda que un abogado revise el plazo y el bloqueo antes del lanzamiento.
+- **Estado:** implementado (migración `20261111000700_consent_archive.sql`). Tabla `consent_records_archive` con hash HMAC-SHA256 del `user_id` (secreto `consent_pseudonym_secret` en Vault), tratamiento, versión del texto, fechas de concesión, retirada (o de la baja) y archivo; RLS sin políticas, solo lectura para service_role; la rellena un trigger antes de cualquier borrado de `consents` y pg_cron purga a los 3 años. Los consentimientos retirados en vida no se borran (siguen en `consents` como prueba) y se archivan con su fecha real de retirada al darse de baja. Se recomienda que un abogado revise el plazo y el bloqueo antes del lanzamiento.
 
 ### D7 · Exportación de datos · 2026-11-11 · decisión del usuario
 
 - **Decisión:** un endpoint devuelve en JSON legible por máquina todos los datos del usuario (perfil, consentimientos, avatar con medidas, perfil de color, prendas con medidas, fit y outfits) y URLs firmadas temporales a sus GLB. La respuesta es inmediata o, como máximo, en menos de un mes. No incluye las fotos originales porque ya no existen.
 - **Motivo:** derechos de acceso y de portabilidad (arts. 15 y 20 del RGPD).
 - **Alternativa descartada:** atender las solicitudes a mano.
-- **Estado:** pendiente de implementar.
+- **Estado:** implementado: Edge Function `GET export-data`, tipo `DataExport` en `packages/contracts` (v0.3.0), respuesta validada contra su JSON Schema, URLs firmadas de 1 hora (GLB, patrones, recortes y miniaturas), jobs sin salida ni rutas internas y cuota de 5 exportaciones por usuario y día. La respuesta es inmediata.
 
 ### D8 · URLs firmadas de subida de 2 horas · 2026-11-11 · decisión del usuario
 

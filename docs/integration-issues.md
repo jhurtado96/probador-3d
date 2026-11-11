@@ -1,6 +1,6 @@
 # Problemas de integración tras la primera tanda
 
-Recopilados de los informes de los agentes. Reconciliados el 2026-11-11: cada punto está **resuelto** (con el cambio hecho) o **pendiente** (con el motivo). Las decisiones están en `docs/architecture.md` §7; los contratos, en `packages/contracts` v0.2.0.
+Recopilados de los informes de los agentes. Reconciliados el 2026-11-11: cada punto está **resuelto** (con el cambio hecho) o **pendiente** (con el motivo). Las decisiones están en `docs/architecture.md` §7; los contratos, en `packages/contracts` v0.3.0 (v0.3.0 solo añade `DataExport`).
 
 Resumen: 25 resueltos, 2 pendientes (25 y 27). Además quedan 2 implementaciones pendientes que no estaban en la lista (ver el final).
 
@@ -43,10 +43,10 @@ Resumen: 25 resueltos, 2 pendientes (25 y 27). Además quedan 2 implementaciones
 26. **`package.json` raíz.** Resuelto. npm workspaces (`apps/*`, `packages/*`), un único `package-lock.json`, lockfiles sueltos eliminados, y `apps/app` depende de `@probador/contracts`. Comprobado con instalación limpia desde la raíz.
 27. **`apps/app/.claude/settings.json` activa el plugin de Expo.** **Pendiente.** Motivo: decisión del usuario; no se ha tocado.
 
-## Pendiente de implementar (decidido por el usuario, fuera de la lista original)
+## Decididos por el usuario, fuera de la lista original
 
-- **Consentimientos tras borrar la cuenta (D6).** Hoy `delete-account` los borra en cascada. Hay que conservar un registro mínimo seudonimizado (hash del `user_id`, tratamiento, versión del texto, fechas de concesión y retirada), bloqueado, durante 3 años, y borrarlo después. Lo implementará otro agente. Recomendada la revisión de un abogado antes del lanzamiento.
-- **Exportación de datos (D7).** Endpoint que devuelve en JSON todos los datos del usuario y URLs firmadas temporales a sus GLB. Lo implementará otro agente.
+- **Consentimientos tras borrar la cuenta (D6).** **Implementado.** Un trigger copia cada consentimiento, antes de borrarlo, a `consent_records_archive` (HMAC-SHA256 del `user_id` con el secreto de Vault `consent_pseudonym_secret`, tratamiento, versión del texto, fechas de concesión, retirada o baja y archivo); la tabla está bloqueada (RLS sin políticas, solo lectura de service_role) y pg_cron la purga a los 3 años. Los retirados en vida no se borraban ni se borran: se archivan al darse de baja. Comprobado con pgTAP y e2e. Queda recomendada la revisión de un abogado antes del lanzamiento.
+- **Exportación de datos (D7).** **Implementado.** `GET export-data` devuelve un `DataExport` (contratos v0.3.0) validado contra su JSON Schema, con URLs firmadas de 1 hora y cuota de 5 al día. Comprobado con e2e (JSON válido, solo datos propios, cuota).
 
 ## Otros asuntos que necesitan al usuario
 
