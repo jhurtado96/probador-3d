@@ -12,4 +12,5 @@ class GarmentHandler(JobHandler):
         ctx.report("fake_garment", 0.5)
         glb = ctx.upload("glb", fake_data.minimal_glb(), "model/gltf-binary")
         image = ctx.upload("image", fake_data.minimal_png(), "image/png")
-        return fake_data.fake_garment(ctx.input, glb, image)
+        pattern = ctx.upload("sewing_pattern", fake_data.fake_sewing_pattern(), "application/json")
+        return fake_data.fake_garment(ctx.user_id, ctx.input, glb, image, pattern)

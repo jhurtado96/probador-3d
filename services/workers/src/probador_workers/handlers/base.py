@@ -27,6 +27,16 @@ class JobContext:
     def input(self) -> dict[str, Any]:
         return self.dispatch["input"]
 
+    @property
+    def user_id(self) -> str | None:
+        """Dueño del job (`JobDispatch.user_id`); `None` en jobs de catálogo."""
+        return self.dispatch["user_id"]
+
+    def require_user_id(self) -> str:
+        if self.user_id is None:
+            raise JobFailure("invalid_input", f"un job '{self.dispatch['type']}' necesita user_id", retryable=False)
+        return self.user_id
+
     def upload_target(self, name: str) -> dict[str, Any]:
         for u in self.dispatch["output_uploads"]:
             if u["name"] == name:

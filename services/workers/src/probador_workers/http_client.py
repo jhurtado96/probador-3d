@@ -15,7 +15,7 @@ import httpx
 from .config import Config
 from .errors import ConfigError, TransferError
 from .logging_setup import log_event
-from .signing import SIGNATURE_HEADER, canonical_body, sign
+from .signing import canonical_body, signed_headers
 
 log = logging.getLogger("probador.http")
 _LOCAL = {"localhost", "127.0.0.1", "::1"}
@@ -75,7 +75,7 @@ class CallbackSink(Protocol):
 
 
 class HttpCallbackSink:
-    """POST del JobCallback firmado con HMAC-SHA256 en `x-probador-signature`."""
+    """POST del JobCallback firmado (`x-probador-timestamp` + `x-probador-signature`)."""
 
     def __init__(self, callback_url: str, cfg: Config, client: httpx.Client | None = None, sleep: Callable[[float], None] = time.sleep):
         if not cfg.callback_secret:
@@ -86,9 +86,10 @@ class HttpCallbackSink:
 
     def send(self, payload: dict[str, Any]) -> None:
         body = canonical_body(payload)
-        headers = {"content-type": "application/json", SIGNATURE_HEADER: sign(body, self._cfg.callback_secret or "")}
         last = "?"
         for attempt in range(3):
+            # Cada reintento se firma de nuevo: el timestamp tiene que estar dentro de la tolerancia del receptor.
+            headers = {"content-type": "application/json", **signed_headers(body, self._cfg.callback_secret or "")}
             try:
                 r = self._client.post(self._url, content=body, headers=headers)
                 if r.status_code < 300:

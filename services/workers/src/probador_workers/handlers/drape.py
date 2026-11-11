@@ -11,4 +11,5 @@ class DrapeHandler(JobHandler):
     def run_fake(self, ctx: JobContext) -> dict[str, Any]:
         ctx.report("fake_drape", 0.5)
         glb = ctx.upload("glb", fake_data.minimal_glb(), "model/gltf-binary")
-        return fake_data.fake_drape(ctx.job_id, ctx.input, glb)
+        # La clave de caché la calcula la API (context.cache_key) y se devuelve tal cual.
+        return fake_data.fake_drape(ctx.job_id, ctx.user_id, ctx.input, ctx.dispatch["context"]["cache_key"], glb)

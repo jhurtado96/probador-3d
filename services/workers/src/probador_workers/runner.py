@@ -40,6 +40,8 @@ def execute(
     job_id, jt, attempt = dispatch["job_id"], dispatch["type"], dispatch["attempt"]
     wv = worker_version(jt, fake)
     base = {"job_id": job_id, "attempt": attempt, "worker_version": wv}
+    if fake:
+        base["fake"] = True  # marca estándar del contrato (JobCallback.fake)
     t0 = time.monotonic()
     ctx_log = {"job_id": job_id, "job_type": jt, "attempt": attempt, "fake": fake}
 
@@ -60,7 +62,7 @@ def execute(
         log_event(log, "job_succeeded", duration_ms=int((time.monotonic() - t0) * 1000), **ctx_log)
         return final
     except NotImplementedJob as e:
-        return _fail(send, base, "internal", str(e), False, ctx_log)
+        return _fail(send, base, "not_implemented", str(e), False, ctx_log)
     except JobFailure as e:
         return _fail(send, base, e.code, redact(str(e)), e.retryable, ctx_log)
     except TransferError as e:

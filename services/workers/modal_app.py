@@ -63,11 +63,11 @@ async def dispatch(request: Request) -> dict:
     from probador_workers.config import Config
     from probador_workers.errors import ContractError
     from probador_workers.schemas import validate_dispatch
-    from probador_workers.signing import SIGNATURE_HEADER, verify
+    from probador_workers.signing import verify_request
 
     cfg = Config.from_env()
     raw = await request.body()
-    if not verify(raw, request.headers.get(SIGNATURE_HEADER), cfg.dispatch_secret or ""):
+    if not verify_request(raw, request.headers, cfg.dispatch_secret or ""):
         raise HTTPException(401, "invalid signature")
     try:
         data = json.loads(raw)

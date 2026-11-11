@@ -14,7 +14,7 @@ from .http_client import CallbackSink, HttpCallbackSink, TransferClient
 from .logging_setup import log_event
 from .runner import execute
 from .schemas import validate_dispatch
-from .signing import SIGNATURE_HEADER, verify
+from .signing import verify_request
 
 log = logging.getLogger("probador.server")
 
@@ -41,7 +41,7 @@ def create_app(
     @app.post("/dispatch", status_code=202)
     async def dispatch(request: Request, background: BackgroundTasks) -> dict[str, Any]:
         raw = await request.body()
-        if cfg.dispatch_secret and not verify(raw, request.headers.get(SIGNATURE_HEADER), cfg.dispatch_secret):
+        if cfg.dispatch_secret and not verify_request(raw, request.headers, cfg.dispatch_secret):
             raise HTTPException(401, "invalid signature")
         try:
             data = json.loads(raw)

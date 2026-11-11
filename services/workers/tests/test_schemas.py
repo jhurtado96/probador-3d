@@ -9,13 +9,43 @@ from probador_workers.schemas import OUTPUT_DEF, problems, validate, validate_ca
 
 
 @pytest.mark.parametrize("f", sorted(p.name for p in EXAMPLES.glob("*.json")))
-def test_examples_validate_against_job_schema(f):
-    assert problems("job", example(f)) == []
+def test_examples_validate_against_their_schema(f):
+    type_name = f.split(".")[0]
+    schema = "".join("_" + c.lower() if c.isupper() else c for c in type_name).lstrip("_")
+    assert problems(schema, example(f)) == []
 
 
 def test_drape_example_output_matches_callback_output_schema():
     out = example("Job.drape-succeeded.json")["output"]
     validate("job_callback", out, OUTPUT_DEF["drape"])
+
+
+def test_dispatch_and_callback_examples_are_valid():
+    validate_dispatch(example("JobDispatch.drape.json"))
+    validate_callback(example("JobCallback.avatar-succeeded.json"), "avatar")
+
+
+def test_drape_dispatch_needs_context_and_its_urls():
+    d = make_dispatch("drape")
+    del d["context"]
+    with pytest.raises(ContractError):
+        validate_dispatch(d)
+    d = make_dispatch("drape")
+    d["input_urls"].pop(d["context"]["avatar"]["glb_path"])
+    with pytest.raises(ContractError):
+        validate_dispatch(d)
+    d = make_dispatch("avatar")
+    d["context"] = make_dispatch("drape")["context"]  # solo el drapeado lleva contexto
+    with pytest.raises(ContractError):
+        validate_dispatch(d)
+
+
+def test_dispatch_requires_user_id_key():
+    d = make_dispatch("garment", user_id=None)  # catálogo
+    validate_dispatch(d)
+    del d["user_id"]
+    with pytest.raises(ContractError):
+        validate_dispatch(d)
 
 
 def test_dispatch_built_from_avatar_example_is_valid():

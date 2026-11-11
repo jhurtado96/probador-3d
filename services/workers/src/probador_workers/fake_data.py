@@ -1,5 +1,6 @@
-"""Artefactos y salidas FALSAS para pruebas de integración (`--fake`). Todo queda marcado como falso:
-`worker_version` y `pipeline_version`/`model_version` empiezan por `fake`, confianza 0, nombres `FAKE`."""
+"""Artefactos y salidas FALSAS para pruebas de integración (`--fake`). Todo queda marcado como falso: el callback
+lleva `fake: true` (marca estándar del contrato), `model_version`/`pipeline_version` empiezan por `fake/`
+(FAKE_VERSION_PREFIX), confianza 0, medidas `unmeasured` y nombres `FAKE`."""
 
 from __future__ import annotations
 
@@ -8,8 +9,7 @@ import struct
 import zlib
 from datetime import datetime, timezone
 
-FAKE_TAG = "fake"
-NIL_UUID = "00000000-0000-0000-0000-000000000000"
+FAKE_VERSION_PREFIX = "fake/"
 
 
 def now_iso() -> str:
@@ -47,21 +47,26 @@ def minimal_png() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def fake_avatar(avatar_id: str, inp: dict, glb_ref: str) -> dict:
+def fake_sewing_pattern() -> bytes:
+    """Especificación de patrón de pega (no es un GarmentCode válido; lo declara)."""
+    return json.dumps({"format": "garmentcode", "generator": "probador-workers FAKE", "panels": {}, "stitches": []}).encode()
+
+
+def fake_avatar(avatar_id: str, user_id: str, inp: dict, glb_ref: str) -> dict:
     ts = now_iso()
     zero = 0
     return {
         "avatar": {
             "id": avatar_id,
-            "user_id": NIL_UUID,  # el dispatch no trae user_id: la API debe fijarlo (ver informe)
-            "body_model": "smplx",
-            "model_version": "fake/avatar-0",
-            "smplx": {"gender": inp.get("gender", "neutral"), "betas": [0.0] * 10},
+            "user_id": user_id,
+            "body_model": "mhr",
+            "model_version": FAKE_VERSION_PREFIX + "avatar-0",
+            "shape": {"params": [0.0] * 45},
             "measurements": {
                 "height_cm": inp["height_cm"], "chest_cm": zero, "waist_cm": zero, "hip_cm": zero,
                 "shoulder_width_cm": zero, "arm_length_cm": zero, "inseam_cm": zero,
             },
-            "measurements_source": "manual",
+            "measurements_source": "unmeasured",
             "glb_url": glb_ref,
             "pose": "a_pose",
             "shape_hash": "fake",
@@ -69,17 +74,16 @@ def fake_avatar(avatar_id: str, inp: dict, glb_ref: str) -> dict:
             "created_at": ts,
             "updated_at": ts,
         },
-        "input_deleted_at": ts,
     }
 
 
-def fake_garment(inp: dict, glb_ref: str, image_ref: str) -> dict:
+def fake_garment(user_id: str | None, inp: dict, glb_ref: str, image_ref: str, pattern_ref: str) -> dict:
     ts = now_iso()
     size = inp.get("size_label")
     return {
         "garment": {
             "id": inp["garment_id"],
-            "user_id": NIL_UUID,
+            "user_id": user_id,
             "status": "ready",
             "category": inp.get("category_hint", "tshirt"),
             "name": "FAKE garment",
@@ -91,23 +95,27 @@ def fake_garment(inp: dict, glb_ref: str, image_ref: str) -> dict:
             "level": 1,
             "image_url": image_ref,
             "glb_url": glb_ref,
-            "pipeline_version": "fake/garment-0",
+            "sewing_pattern_url": pattern_ref,
+            "sewing_pattern_format": "garmentcode",
+            "pipeline_version": FAKE_VERSION_PREFIX + "garment-0",
             "created_at": ts,
             "updated_at": ts,
         },
-        "input_deleted_at": ts,
+        # Sin `embedding`: un vector inventado contaminaría la búsqueda por similitud.
     }
 
 
-def fake_drape(job_id: str, inp: dict, glb_ref: str) -> dict:
+def fake_drape(job_id: str, user_id: str | None, inp: dict, cache_key: str, glb_ref: str) -> dict:
     import uuid
 
+    out = {"glb_url": glb_ref, "cache_key": cache_key, "cache_hit": False}
+    if user_id is None:  # catálogo: no hay dueño al que atribuir un FitResult
+        return out
     return {
-        "glb_url": glb_ref,
-        "cache_key": f"fake:{job_id}",
-        "cache_hit": False,
+        **out,
         "fit_result": {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"fake-fit:{job_id}")),
+            "user_id": user_id,
             "avatar_id": inp["avatar_id"],
             "garment_id": inp["garment_id"],
             "size_label": inp["size_label"],
@@ -123,14 +131,14 @@ def fake_drape(job_id: str, inp: dict, glb_ref: str) -> dict:
     }
 
 
-def fake_color(job_id: str, inp: dict) -> dict:
+def fake_color(job_id: str, user_id: str, inp: dict) -> dict:
     import uuid
 
     ts = now_iso()
     return {
         "color_profile": {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"fake-color:{job_id}")),
-            "user_id": NIL_UUID,
+            "user_id": user_id,
             "season": "soft_summer",
             "undertone": "neutral",
             "value": "medium",
@@ -142,8 +150,9 @@ def fake_color(job_id: str, inp: dict) -> dict:
             "metal": "any",
             "confidence": 0,
             "white_balanced": False,
-            "pipeline_version": "fake/color-0",
+            "quality": {"flags": ["no_white_reference"], "capture_score": 0},
+            "pipeline_version": FAKE_VERSION_PREFIX + "color-0",
             "created_at": ts,
+            "updated_at": ts,
         },
-        "input_deleted_at": ts,
     }

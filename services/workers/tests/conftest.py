@@ -17,31 +17,41 @@ def _url(path: str) -> str:
     return f"https://example.supabase.co/storage/v1/object/sign/{path}?token={TOKEN}"
 
 
+USER_ID = "5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01"
+
+
 def make_dispatch(job_type: str, **over):
     job_id = str(uuid.uuid4())
     cid = str(uuid.uuid4())
+    extra = {}
+
+    def out(name, path, content_type):
+        return {"name": name, "path": path, "upload_url": _url("up/" + name), "content_type": content_type}
+
     if job_type == "avatar":
         inp = {"photo_path": "raw-uploads/u/photo.jpg", "height_cm": 172, "consent_id": cid}
         urls = {"raw-uploads/u/photo.jpg": _url("raw-uploads/u/photo.jpg")}
-        outs = [{"name": "glb", "path": f"avatars/u/{job_id}.glb", "upload_url": _url("up/glb")}]
+        outs = [out("glb", f"assets/u/avatars/{job_id}-a1.glb", "model/gltf-binary")]
     elif job_type == "garment":
         inp = {"garment_id": str(uuid.uuid4()), "image_paths": ["raw-uploads/u/g1.jpg"], "category_hint": "shirt", "size_label": "M"}
         urls = {"raw-uploads/u/g1.jpg": _url("raw-uploads/u/g1.jpg")}
         outs = [
-            {"name": "glb", "path": "garments/u/g.glb", "upload_url": _url("up/glb")},
-            {"name": "image", "path": "garments/u/g.png", "upload_url": _url("up/img")},
+            out("glb", "assets/u/garments/g/j-a1.glb", "model/gltf-binary"),
+            out("image", "assets/u/garments/g/j-a1-cutout.png", "image/png"),
+            out("sewing_pattern", "assets/u/garments/g/j-a1-pattern.json", "application/json"),
         ]
     elif job_type == "drape":
-        inp = {"avatar_id": str(uuid.uuid4()), "garment_id": str(uuid.uuid4()), "size_label": "M", "pose": "a_pose", "quality": "preview"}
-        urls = {}
-        outs = [{"name": "glb", "path": "drapes/u/d.glb", "upload_url": _url("up/glb")}]
+        ex = example("JobDispatch.drape.json")
+        inp, urls, extra = ex["input"], ex["input_urls"], {"context": ex["context"]}
+        outs = [out("glb", "assets/u/drapes/d-a1.glb", "model/gltf-binary")]
     else:
         inp = {"selfie_path": "raw-uploads/u/selfie.jpg", "white_reference": "paper", "consent_id": cid}
         urls = {"raw-uploads/u/selfie.jpg": _url("raw-uploads/u/selfie.jpg")}
         outs = []
     d = {
-        "job_id": job_id, "type": job_type, "input": inp, "input_urls": urls, "output_uploads": outs,
-        "callback_url": "https://example.supabase.co/functions/v1/jobs/callback", "attempt": 1,
+        "job_id": job_id, "user_id": USER_ID, "type": job_type, "input": inp, **extra, "input_urls": urls,
+        "output_uploads": outs, "callback_url": "https://example.supabase.co/functions/v1/job-callback", "attempt": 1,
+        "contracts_version": "0.2.0",
     }
     d.update(over)
     return copy.deepcopy(d)

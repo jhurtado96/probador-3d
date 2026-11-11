@@ -13,8 +13,8 @@ from .errors import ContractError
 
 _FORMATS = FormatChecker()
 
-# Definición de entrada (JobDispatch) y de salida (JobCallback) por tipo de job.
-INPUT_DEF = {"avatar": "AvatarJobInput", "garment": "GarmentJobInput", "drape": "DrapeJobInput", "color": "ColorJobInput"}
+# Variante de JobDispatch y definición de salida (JobCallback) por tipo de job.
+DISPATCH_DEF = {"avatar": "AvatarJobDispatch", "garment": "GarmentJobDispatch", "drape": "DrapeJobDispatch", "color": "ColorJobDispatch"}
 OUTPUT_DEF = {"avatar": "AvatarJobOutput", "garment": "GarmentJobOutput", "drape": "DrapeJobOutput", "color": "ColorJobOutput"}
 
 
@@ -69,12 +69,28 @@ def _input_paths(job_type: str, inp: dict[str, Any]) -> list[str]:
     return []
 
 
+def _context_paths(d: dict[str, Any]) -> list[str]:
+    """Rutas del contexto de drapeado (GLB del avatar, patrón y GLB de la prenda)."""
+    ctx = d.get("context") or {}
+    g = ctx.get("garment", {})
+    paths = [ctx.get("avatar", {}).get("glb_path"), g.get("sewing_pattern_path"), g.get("glb_path")]
+    return [p for p in paths if p]
+
+
 def validate_dispatch(d: Any) -> None:
-    """JobDispatch + entrada específica del tipo (el anyOf del schema es demasiado laxo) + URLs de entrada."""
-    validate("job_dispatch", d, what="JobDispatch")
-    jt = d["type"]
-    validate("job_dispatch", d["input"], INPUT_DEF[jt], what=f"{jt} input")
-    missing = [p for p in _input_paths(jt, d["input"]) if p not in d["input_urls"]]
+    """JobDispatch (unión discriminada por `type`) + una URL de descarga por cada ruta de entrada."""
+    jt = d.get("type") if isinstance(d, dict) else None
+    if jt in DISPATCH_DEF:
+        # Validar contra la variante del tipo da errores más precisos que el anyOf de la raíz.
+        validate("job_dispatch", d, DISPATCH_DEF[jt], what="JobDispatch")
+    else:
+        validate("job_dispatch", d, what="JobDispatch")
+    needed = _input_paths(jt, d["input"]) + _context_paths(d)
+    if jt == "drape":
+        g = d["context"]["garment"]
+        if not (g["sewing_pattern_path"] or g["glb_path"]):
+            raise ContractError("JobDispatch", ["context/garment: hace falta sewing_pattern_path o glb_path"])
+    missing = [p for p in needed if p not in d["input_urls"]]
     if missing:
         raise ContractError("JobDispatch", [f"input_urls: falta URL para {len(missing)} ruta(s) de entrada"])
 

@@ -1,11 +1,18 @@
 # probador-workers
 
 Esqueleto de los workers GPU (`avatar`, `garment`, `drape`, `color`) en Python 3.11+ con uv. **Aún no hay ML**: sin `--fake`
-cada job termina con un callback `failed` (`code: internal`, mensaje `not_implemented: ...`, `retryable: false`).
+cada job termina con un callback `failed` (`code: not_implemented`, `retryable: false`).
 
 Contrato: `packages/contracts/schemas/*.schema.json` (se leen desde esa ruta relativa; no se copian). El worker recibe un
 `JobDispatch` por HTTP con URLs firmadas (nunca credenciales de base de datos), descarga la entrada, sube el GLB y responde
-con un `JobCallback` firmado `x-probador-signature: sha256=<hex>` (HMAC-SHA256 sobre los bytes exactos del cuerpo).
+con un `JobCallback` firmado. Dispatch y callback se autentican igual (contrato, «Firma de peticiones entre API y
+workers»): `x-probador-timestamp: <segundos Unix>` y `x-probador-signature: sha256=<hex>`, HMAC-SHA256 sobre
+`"<timestamp>." + bytes exactos del cuerpo`; se rechaza con más de 300 s de desfase (reenvíos). Un secreto por sentido,
+con el mismo nombre en la API y en el worker. El vector `packages/contracts/fixtures/signature-vector.json` se prueba aquí.
+
+Del dispatch salen también el dueño (`user_id`, que el worker copia en las entidades de salida) y, en el drapeado,
+`context`: GLB del avatar, patrón GarmentCode y GLB de la prenda (sus URLs están en `input_urls`), medidas, tejido y la
+`cache_key` que hay que devolver. El worker no borra fotos ni declara `input_deleted_at`: eso es de la API.
 
 ## Estructura
 
@@ -36,14 +43,16 @@ PROBADOR_CALLBACK_SECRET=dev PROBADOR_DISPATCH_SECRET=dev uv run probador-worker
 uv run probador-workers run dispatch.json --fake --dry-run
 ```
 
-`POST /dispatch` (cuerpo = JobDispatch JSON; cabecera `x-probador-signature` firmada con `PROBADOR_DISPATCH_SECRET`)
+`POST /dispatch` (cuerpo = JobDispatch JSON; cabeceras de firma calculadas con `PROBADOR_DISPATCH_SECRET`)
 responde 202 y procesa en segundo plano; el resultado llega al `callback_url` del dispatch.
 
 ## Modo fake
 
-`--fake` o `PROBADOR_FAKE=1`. No descarga fotos. Las salidas cumplen el esquema pero están marcadas: `worker_version`
-`<tipo>-fake-<ver>`, `model_version`/`pipeline_version` `fake/...`, `confidence: 0`, medidas a 0, nombre `FAKE`, GLB de un
-triángulo con `generator: "probador-workers FAKE"`, `user_id` = UUID nulo. **Se rechaza con `PROBADOR_ENV=production`.**
+`--fake` o `PROBADOR_FAKE=1`. No descarga fotos. Las salidas cumplen el esquema pero están marcadas: todos los callbacks
+llevan `fake: true` (marca estándar del contrato; la API la copia a `jobs.fake` y la rechaza si no tiene
+`PROBADOR_ALLOW_FAKE_WORKERS=1`), `worker_version` `<tipo>-fake-<ver>`, `model_version`/`pipeline_version` `fake/...`,
+`confidence: 0`, medidas a 0 con `measurements_source: "unmeasured"`, nombre `FAKE`, GLB de un triángulo y patrón vacío
+con `generator: "probador-workers FAKE"`, sin embedding. **Se rechaza con `PROBADOR_ENV=production`.**
 
 ## Modal
 
@@ -63,8 +72,8 @@ Los esquemas se montan en la imagen desde `packages/contracts/schemas`: desplieg
 |---|---|---|
 | `PROBADOR_ENV` | `development` / `production` (en producción: exige ambos secretos, prohíbe fake y http) | `development` |
 | `PROBADOR_FAKE` | salidas falsas | `0` |
-| `PROBADOR_DISPATCH_SECRET` | secreto HMAC para autenticar el dispatch entrante (Modal Secret) | sin definir |
-| `PROBADOR_CALLBACK_SECRET` | secreto HMAC con el que se firma el callback (Modal Secret) | sin definir |
+| `PROBADOR_DISPATCH_SECRET` | secreto HMAC para autenticar el dispatch entrante (Modal Secret); mismo nombre y valor en las Edge Functions | sin definir |
+| `PROBADOR_CALLBACK_SECRET` | secreto HMAC con el que se firma el callback (Modal Secret); mismo nombre y valor en las Edge Functions | sin definir |
 | `PROBADOR_SCHEMAS_DIR` | carpeta de schemas | `../../packages/contracts/schemas` |
 | `PROBADOR_ALLOWED_URL_HOSTS` | lista de hosts (o sufijos) permitidos para URLs firmadas y callback, separados por comas | cualquiera (solo https) |
 | `PROBADOR_ALLOW_INSECURE_LOCALHOST` | permite `http://localhost` | `1` salvo producción |

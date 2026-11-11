@@ -5,14 +5,14 @@ import struct
 import httpx
 import pytest
 
-from conftest import SECRET, TOKEN, make_dispatch
+from conftest import SECRET, TOKEN, USER_ID, make_dispatch
 from probador_workers.config import Config
 from probador_workers.errors import ConfigError, ContractError
 from probador_workers.http_client import HttpCallbackSink, ListSink, TransferClient
 from probador_workers.logging_setup import JsonFormatter, log_event
 from probador_workers.runner import execute
 from probador_workers.schemas import validate_callback
-from probador_workers.signing import SIGNATURE_HEADER, verify
+from probador_workers.signing import verify_request
 
 
 def recording_transfer(cfg, requests):
@@ -31,12 +31,22 @@ def test_fake_mode_produces_valid_marked_outputs(cfg, job_type):
     assert "fake" in final["worker_version"]
     for cb in sink.sent:
         validate_callback(cb, job_type)
+        assert cb["fake"] is True  # marca estándar en todos los callbacks, también los `running`
+    out = final["output"]
+    entity = out.get("avatar") or out.get("garment") or out.get("color_profile") or out["fit_result"]
+    assert entity["user_id"] == USER_ID  # el dueño sale del dispatch, no se inventa
+    assert "input_deleted_at" not in out  # el borrado es cosa de la API
+    version = entity.get("model_version") or entity.get("pipeline_version")
+    assert version is None or version.startswith("fake/")
+    if job_type == "drape":
+        assert out["cache_key"] == d["context"]["cache_key"]
+    if job_type == "garment":
+        assert out["garment"]["sewing_pattern_url"] == "storage://assets/u/garments/g/j-a1-pattern.json"
     assert sink.sent[0]["status"] == "running" and sink.sent[-1] is final
     # el modo fake no descarga fotos ni entradas personales
     assert all(m == "PUT" for m, _, _ in reqs)
-    # marcado como falso en el propio dato
-    text = json.dumps(final["output"]).lower()
-    assert "fake" in text
+    # marcado como falso: la marca estándar va en el callback (el drapeado no tiene campo de versión en su salida)
+    assert final["fake"] is True
     # los GLB subidos son GLB válidos
     for _, _, body in reqs:
         if body.startswith(b"glTF"):
@@ -52,10 +62,9 @@ def test_real_mode_reports_not_implemented(cfg, job_type):
     sink = ListSink()
     final = execute(make_dispatch(job_type), cfg, sink, transfer=recording_transfer(cfg, []), fake=False)
     assert final["status"] == "failed"
-    assert final["error"]["code"] == "internal"
-    assert final["error"]["message"].startswith("not_implemented")
+    assert final["error"]["code"] == "not_implemented"
     assert final["error"]["retryable"] is False
-    assert "output" not in final
+    assert "output" not in final and "fake" not in final
     validate_callback(final, job_type)
 
 
@@ -87,7 +96,7 @@ def test_http_callback_is_signed_and_retries(cfg):
     sink = HttpCallbackSink("https://example.supabase.co/cb", cfg, httpx.Client(transport=httpx.MockTransport(handler)), sleep=lambda s: None)
     sink.send({"job_id": "j", "attempt": 1, "status": "running", "worker_version": "v"})
     assert len(seen) == 2
-    assert verify(seen[-1].content, seen[-1].headers[SIGNATURE_HEADER], SECRET)
+    assert verify_request(seen[-1].content, seen[-1].headers, SECRET)
 
 
 def test_callback_requires_secret():
