@@ -12,6 +12,12 @@ const outDir = join(root, "schemas");
 const check = process.argv.includes("--check");
 
 const TYPES = [
+  "Profile",
+  "Consent",
+  "UserFitPreferences",
+  "DrapeCache",
+  "CreateJobResponse",
+  "ApiErrorBody",
   "BodyMeasurements",
   "Avatar",
   "ColorProfile",
@@ -82,4 +88,16 @@ for (const f of existsSync(exDir) ? readdirSync(exDir) : []) {
 if (stale || bad) {
   if (stale) console.error("Ejecuta `npm run schemas` y vuelve a comprobar.");
   process.exit(1);
+}
+
+// Vector de prueba de la firma: lo comparten los tests de workers y de Supabase.
+{
+  const { createHmac } = await import("node:crypto");
+  const v = JSON.parse(readFileSync(join(root, "fixtures", "signature-vector.json"), "utf8"));
+  const expected = "sha256=" + createHmac("sha256", v.secret).update(`${v.timestamp}.${v.body}`, "utf8").digest("hex");
+  if (expected !== v.signature) {
+    console.error("fixtures/signature-vector.json: la firma no corresponde al secreto, timestamp y cuerpo");
+    process.exit(1);
+  }
+  console.log("ok fixtures/signature-vector.json");
 }

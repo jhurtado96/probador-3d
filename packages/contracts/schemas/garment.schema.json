@@ -1,169 +1,225 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "$ref": "#/definitions/UUID"
+  "anyOf": [
+    {
+      "$ref": "#/definitions/PendingGarment"
     },
-    "user_id": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/UUID"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Dueño. `null` en prendas de catálogo de tienda."
-    },
-    "store_product_id": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/UUID"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Producto de tienda del que procede, si lo hay."
-    },
-    "status": {
-      "$ref": "#/definitions/GarmentStatus"
-    },
-    "category": {
-      "$ref": "#/definitions/GarmentCategory"
-    },
-    "name": {
-      "type": "string"
-    },
-    "brand": {
-      "type": "string"
-    },
-    "attributes": {
-      "$ref": "#/definitions/GarmentAttributes"
-    },
-    "colors": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/GarmentColor"
-      },
-      "description": "Colores dominantes, de mayor a menor proporción.",
-      "minItems": 1
-    },
-    "design_fit": {
-      "$ref": "#/definitions/DesignFit"
-    },
-    "size_label": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Talla que tiene el usuario (armario) o `null` si es de catálogo."
-    },
-    "measurements": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/GarmentSizeMeasurements"
-      },
-      "description": "Medidas por talla; en el armario suele haber una sola."
-    },
-    "level": {
-      "$ref": "#/definitions/GarmentLevel"
-    },
-    "template_id": {
-      "type": "string",
-      "description": "Plantilla paramétrica usada (nivel 1)."
-    },
-    "image_url": {
-      "$ref": "#/definitions/Url",
-      "description": "Recorte de la prenda sin fondo ni persona. La foto original no se conserva."
-    },
-    "glb_url": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Url"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "GLB de la prenda en reposo; `null` mientras `status` es `processing`."
-    },
-    "user_corrected_fields": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
-    },
-    "pipeline_version": {
-      "type": "string"
-    },
-    "created_at": {
-      "$ref": "#/definitions/ISODateTime"
-    },
-    "updated_at": {
-      "$ref": "#/definitions/ISODateTime"
+    {
+      "$ref": "#/definitions/ReadyGarment"
     }
-  },
-  "required": [
-    "id",
-    "user_id",
-    "status",
-    "category",
-    "attributes",
-    "colors",
-    "design_fit",
-    "size_label",
-    "measurements",
-    "level",
-    "image_url",
-    "glb_url",
-    "pipeline_version",
-    "created_at",
-    "updated_at"
   ],
-  "additionalProperties": false,
-  "description": "Prenda del armario del usuario o normalizada desde un producto de tienda.",
+  "description": "Prenda del armario del usuario o normalizada desde un producto de tienda. Unión discriminada por `status`.",
   "definitions": {
+    "PendingGarment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño. `null` en prendas de catálogo de tienda."
+        },
+        "store_product_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Producto de tienda del que procede, si lo hay."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brand": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attributes": {
+          "$ref": "#/definitions/GarmentAttributes"
+        },
+        "size_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Talla que tiene el usuario (armario) o `null` si es de catálogo."
+        },
+        "measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GarmentSizeMeasurements"
+          },
+          "description": "Medidas por talla; en el armario suele haber una sola."
+        },
+        "level": {
+          "$ref": "#/definitions/GarmentLevel"
+        },
+        "template_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Configuración de GarmentCode usada como plantilla (nivel 1)."
+        },
+        "user_corrected_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
+        },
+        "pipeline_version": {
+          "type": "string",
+          "description": "`pending` hasta que el pipeline la procesa; `fake/…` si la generó un worker fake."
+        },
+        "created_at": {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        "updated_at": {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "processing",
+            "failed"
+          ]
+        },
+        "category": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GarmentCategory"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GarmentColor"
+          },
+          "description": "Colores dominantes; vacío hasta que el pipeline los mide."
+        },
+        "design_fit": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DesignFit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "design_fit_confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "glb_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sewing_pattern_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sewing_pattern_format": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SewingPatternFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "attributes",
+        "colors",
+        "created_at",
+        "id",
+        "level",
+        "measurements",
+        "pipeline_version",
+        "size_label",
+        "status",
+        "updated_at",
+        "user_id"
+      ],
+      "additionalProperties": false,
+      "description": "Prenda recién creada (`processing`) o cuyo job falló (`failed`): el pipeline aún no ha rellenado nada, así que todo lo que produce es opcional."
+    },
     "UUID": {
       "type": "string",
       "description": "Identificador UUID.",
       "format": "uuid"
     },
-    "GarmentStatus": {
-      "type": "string",
-      "enum": [
-        "processing",
-        "ready",
-        "failed"
-      ]
-    },
-    "GarmentCategory": {
-      "type": "string",
-      "enum": [
-        "tshirt",
-        "shirt",
-        "sweater",
-        "hoodie",
-        "jacket",
-        "coat",
-        "dress",
-        "skirt",
-        "pants",
-        "jeans",
-        "shorts"
-      ]
-    },
     "GarmentAttributes": {
       "type": "object",
       "properties": {
         "pattern": {
-          "$ref": "#/definitions/GarmentPattern"
+          "$ref": "#/definitions/GarmentPattern",
+          "description": "Estampado (no confundir con el patrón de costura, `sewing_pattern_url`)."
         },
         "material": {
           "type": "string",
           "description": "Material principal en texto libre normalizado: `cotton`, `denim`, `wool`."
+        },
+        "fabric": {
+          "$ref": "#/definitions/FabricPreset",
+          "description": "Tejido para la simulación; forma parte de la clave de caché del drapeado."
+        },
+        "stretch": {
+          "type": "number",
+          "description": "Elasticidad del tejido: 0 en plano, 0,05–0,15 en punto, hasta 0,3 con elastano. Entra en la holgura de los contornos.",
+          "minimum": 0,
+          "maximum": 1
         },
         "sleeve_length": {
           "$ref": "#/definitions/SleeveLength"
@@ -209,6 +265,18 @@
         "other"
       ]
     },
+    "FabricPreset": {
+      "type": "string",
+      "enum": [
+        "knit_light",
+        "knit_heavy",
+        "woven_light",
+        "woven_stiff",
+        "denim",
+        "silk"
+      ],
+      "description": "Preajuste de tejido del simulador (rigidez a tracción y flexión, densidad)."
+    },
     "SleeveLength": {
       "type": "string",
       "enum": [
@@ -227,6 +295,122 @@
         "mini",
         "midi",
         "maxi"
+      ]
+    },
+    "GarmentSizeMeasurements": {
+      "type": "object",
+      "properties": {
+        "size_label": {
+          "type": "string",
+          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+        },
+        "zones": {
+          "$ref": "#/definitions/ZoneMeasurements"
+        },
+        "source": {
+          "$ref": "#/definitions/GarmentMeasurementSource"
+        }
+      },
+      "required": [
+        "size_label",
+        "zones",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
+    },
+    "ZoneMeasurements": {
+      "type": "object",
+      "properties": {
+        "neck": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "shoulder": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "chest": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "waist": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hip": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "cuff": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "body_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "knee": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "inseam": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "rise": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hem": {
+          "$ref": "#/definitions/Centimeters"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Medidas de una prenda por zona, en cm."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "GarmentMeasurementSource": {
+      "type": "string",
+      "enum": [
+        "brand_size_chart",
+        "photo_reference_object",
+        "lidar",
+        "manual",
+        "estimated"
+      ]
+    },
+    "GarmentLevel": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3
+      ],
+      "description": "1 = configuración cerrada de GarmentCode por categoría + textura; 2 = parámetros libres de GarmentCode estimados desde la foto; 3 = 3D nativo de marca (sin patrón)."
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
       ]
     },
     "GarmentColor": {
@@ -308,104 +492,187 @@
       ],
       "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
     },
-    "GarmentSizeMeasurements": {
+    "Url": {
+      "type": "string",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
+      "format": "uri"
+    },
+    "SewingPatternFormat": {
+      "type": "string",
+      "const": "garmentcode",
+      "description": "Formato del patrón de costura. Niveles 1 y 2: especificación de GarmentCode (JSON)."
+    },
+    "ReadyGarment": {
       "type": "object",
       "properties": {
+        "id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño. `null` en prendas de catálogo de tienda."
+        },
+        "store_product_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Producto de tienda del que procede, si lo hay."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brand": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attributes": {
+          "$ref": "#/definitions/GarmentAttributes"
+        },
         "size_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Talla que tiene el usuario (armario) o `null` si es de catálogo."
+        },
+        "measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GarmentSizeMeasurements"
+          },
+          "description": "Medidas por talla; en el armario suele haber una sola."
+        },
+        "level": {
+          "$ref": "#/definitions/GarmentLevel"
+        },
+        "template_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Configuración de GarmentCode usada como plantilla (nivel 1)."
+        },
+        "user_corrected_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
+        },
+        "pipeline_version": {
           "type": "string",
-          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+          "description": "`pending` hasta que el pipeline la procesa; `fake/…` si la generó un worker fake."
         },
-        "zones": {
-          "$ref": "#/definitions/ZoneMeasurements"
+        "created_at": {
+          "$ref": "#/definitions/ISODateTime"
         },
-        "source": {
-          "$ref": "#/definitions/GarmentMeasurementSource"
+        "updated_at": {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        "status": {
+          "type": "string",
+          "const": "ready"
+        },
+        "category": {
+          "$ref": "#/definitions/GarmentCategory"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GarmentColor"
+          },
+          "description": "Colores dominantes, de mayor a menor proporción.",
+          "minItems": 1
+        },
+        "design_fit": {
+          "$ref": "#/definitions/DesignFit",
+          "description": "Fit con el que se diseñó: atributo de la prenda, no depende de quién la lleve."
+        },
+        "design_fit_confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Confianza del clasificador de `design_fit`."
+        },
+        "image_url": {
+          "$ref": "#/definitions/Url",
+          "description": "Recorte de la prenda sin fondo ni persona. La foto original no se conserva."
+        },
+        "glb_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "GLB de la prenda en reposo. `null` si no se pudo generar el 3D: no se puede drapear."
+        },
+        "sewing_pattern_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Patrón de costura (paneles, costuras y colocación) del que sale el GLB y que el drapeado simula. `null` en prendas de nivel 3."
+        },
+        "sewing_pattern_format": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SewingPatternFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
+        "attributes",
+        "category",
+        "colors",
+        "created_at",
+        "design_fit",
+        "glb_url",
+        "id",
+        "image_url",
+        "level",
+        "measurements",
+        "pipeline_version",
+        "sewing_pattern_url",
         "size_label",
-        "zones",
-        "source"
+        "status",
+        "updated_at",
+        "user_id"
       ],
       "additionalProperties": false,
-      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
-    },
-    "ZoneMeasurements": {
-      "type": "object",
-      "properties": {
-        "neck": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "shoulder": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "chest": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "waist": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "hip": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "sleeve_length": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "bicep": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "body_length": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "thigh": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "inseam": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "rise": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "hem": {
-          "$ref": "#/definitions/Centimeters"
-        }
-      },
-      "additionalProperties": false,
-      "description": "Medidas de una prenda por zona, en cm."
-    },
-    "Centimeters": {
-      "type": "number",
-      "description": "Longitud en centímetros.",
-      "minimum": 0
-    },
-    "GarmentMeasurementSource": {
-      "type": "string",
-      "enum": [
-        "brand_size_chart",
-        "photo_reference_object",
-        "lidar",
-        "manual",
-        "estimated"
-      ]
-    },
-    "GarmentLevel": {
-      "type": "number",
-      "enum": [
-        1,
-        2,
-        3
-      ],
-      "description": "1 = plantilla paramétrica + textura; 2 = patrón desde foto; 3 = 3D nativo de marca."
-    },
-    "Url": {
-      "type": "string",
-      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
-      "format": "uri"
-    },
-    "ISODateTime": {
-      "type": "string",
-      "description": "Fecha y hora ISO 8601 en UTC.",
-      "format": "date-time"
+      "description": "Prenda procesada. Es lo que devuelve el job `garment`."
     }
   },
   "$id": "https://probador.app/schemas/garment.schema.json",

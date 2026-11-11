@@ -1,0 +1,73 @@
+{
+  "job_id": "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+  "user_id": "5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01",
+  "type": "drape",
+  "input": {
+    "avatar_id": "11111111-2222-4333-8444-555555555555",
+    "garment_id": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+    "size_label": "M",
+    "pose": "a_pose",
+    "quality": "preview"
+  },
+  "context": {
+    "cache_key": "sha256:3b1f",
+    "simulator_version": "drape-sim-0",
+    "avatar": {
+      "glb_path": "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/avatars/aaaa-a1.glb",
+      "body_model": "mhr",
+      "model_version": "mhr-1.0/avatar-0.1",
+      "shape_hash": "sha256:9c2e",
+      "measurements": {
+        "height_cm": 172,
+        "chest_cm": 96,
+        "waist_cm": 80,
+        "hip_cm": 98,
+        "shoulder_width_cm": 44,
+        "arm_length_cm": 61,
+        "inseam_cm": 80
+      },
+      "measurements_sigma_cm": {
+        "chest_cm": 3,
+        "waist_cm": 3,
+        "hip_cm": 3
+      }
+    },
+    "garment": {
+      "sewing_pattern_path": "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1-pattern.json",
+      "sewing_pattern_format": "garmentcode",
+      "glb_path": "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1.glb",
+      "level": 1,
+      "category": "shirt",
+      "design_fit": "regular",
+      "attributes": {
+        "pattern": "solid",
+        "fabric": "woven_light",
+        "stretch": 0
+      },
+      "measurements": {
+        "size_label": "M",
+        "zones": {
+          "chest": 106,
+          "sleeve_length": 58
+        },
+        "source": "brand_size_chart"
+      }
+    }
+  },
+  "input_urls": {
+    "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/avatars/aaaa-a1.glb": "https://example.supabase.co/storage/v1/object/sign/assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/avatars/aaaa-a1.glb?token=x",
+    "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1.glb": "https://example.supabase.co/storage/v1/object/sign/assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1.glb?token=x",
+    "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1-pattern.json": "https://example.supabase.co/storage/v1/object/sign/assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/garments/66666666-7777-4888-9999-aaaaaaaaaaaa/bbbb-a1-pattern.json?token=x"
+  },
+  "output_uploads": [
+    {
+      "name": "glb",
+      "path": "assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/drapes/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f-a1.glb",
+      "upload_url": "https://example.supabase.co/storage/v1/object/upload/sign/assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/drapes/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f-a1.glb?token=x",
+      "content_type": "model/gltf-binary"
+    }
+  ],
+  "callback_url": "https://example.supabase.co/functions/v1/job-callback",
+  "attempt": 1,
+  "contracts_version": "0.2.0"
+}

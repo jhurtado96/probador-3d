@@ -9,10 +9,21 @@
       "$ref": "#/definitions/UUID"
     },
     "avatar_id": {
-      "$ref": "#/definitions/UUID"
+      "anyOf": [
+        {
+          "$ref": "#/definitions/UUID"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "`null` si el usuario borró el avatar: el outfit se conserva sin él."
     },
     "name": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "items": {
       "type": "array",
@@ -25,13 +36,30 @@
       "$ref": "#/definitions/OutfitSource"
     },
     "scores": {
-      "$ref": "#/definitions/OutfitScores"
+      "anyOf": [
+        {
+          "$ref": "#/definitions/OutfitScores"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "occasion": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "preview_url": {
-      "$ref": "#/definitions/Url",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Url"
+        },
+        {
+          "type": "null"
+        }
+      ],
       "description": "Miniatura renderizada del outfit."
     },
     "created_at": {
@@ -123,7 +151,7 @@
     },
     "Url": {
       "type": "string",
-      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
       "format": "uri"
     },
     "ISODateTime": {

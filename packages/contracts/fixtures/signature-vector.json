@@ -1,0 +1,7 @@
+{
+  "description": "Vector de prueba de la firma entre API y workers. signature = sha256= + hex(HMAC-SHA256(secret, timestamp + \".\" + body)), con body en UTF-8.",
+  "secret": "test-secret-not-a-real-one",
+  "timestamp": "1794398400",
+  "body": "{\"job_id\":\"0b8f6c1e-5a43-4d0e-9a3e-2f1f0c9d7a11\",\"attempt\":1,\"status\":\"running\",\"stage\":\"señal\",\"worker_version\":\"avatar-0.1.0\"}",
+  "signature": "sha256=f327bc7704cc62a288fa76abcc6443ee50554934b3247f8d148e0eed63372be7"
+}

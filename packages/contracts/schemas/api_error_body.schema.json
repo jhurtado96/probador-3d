@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/ApiErrorCode"
+        },
+        "message": {
+          "type": "string",
+          "description": "Mensaje técnico en inglés; la app traduce `code`."
+        },
+        "details": {
+          "description": "Detalle estructurado, p. ej. los errores de validación (`{ path, message }[]`)."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "additionalProperties": false,
+  "description": "Cuerpo de toda respuesta de error (4xx/5xx) de las Edge Functions.",
+  "definitions": {
+    "ApiErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_json",
+        "invalid_input",
+        "unauthorized",
+        "invalid_signature",
+        "consent_missing",
+        "quota_exceeded",
+        "not_found",
+        "conflict",
+        "method_not_allowed",
+        "invalid_callback",
+        "fake_not_allowed",
+        "input_deletion_failed",
+        "confirmation_required",
+        "storage_not_empty",
+        "auth_delete_failed",
+        "internal"
+      ],
+      "description": "`consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`."
+    }
+  },
+  "$id": "https://probador.app/schemas/api_error_body.schema.json",
+  "title": "ApiErrorBody"
+}

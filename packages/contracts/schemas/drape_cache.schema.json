@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "cache_key": {
+      "type": "string"
+    },
+    "avatar_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "garment_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "size_label": {
+      "type": "string"
+    },
+    "pose": {
+      "$ref": "#/definitions/AvatarPose"
+    },
+    "quality": {
+      "$ref": "#/definitions/DrapeQuality"
+    },
+    "shape_hash": {
+      "type": "string",
+      "description": "`shape_hash` del avatar cuando se simuló."
+    },
+    "simulator_version": {
+      "type": "string"
+    },
+    "glb_url": {
+      "$ref": "#/definitions/Url",
+      "description": "GLB de la prenda drapeada."
+    },
+    "fit_result_id": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/UUID"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hit_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_used_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "cache_key",
+    "avatar_id",
+    "garment_id",
+    "size_label",
+    "pose",
+    "quality",
+    "shape_hash",
+    "simulator_version",
+    "glb_url",
+    "fit_result_id",
+    "hit_count",
+    "last_used_at",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "description": "Entrada de la caché de drapeado (tabla `drape_cache`); una por usuario y `cache_key`.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "AvatarPose": {
+      "type": "string",
+      "enum": [
+        "a_pose",
+        "t_pose",
+        "relaxed"
+      ]
+    },
+    "DrapeQuality": {
+      "type": "string",
+      "enum": [
+        "preview",
+        "final"
+      ]
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
+      "format": "uri"
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/drape_cache.schema.json",
+  "title": "DrapeCache"
+}

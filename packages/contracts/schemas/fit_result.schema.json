@@ -5,6 +5,10 @@
     "id": {
       "$ref": "#/definitions/UUID"
     },
+    "user_id": {
+      "$ref": "#/definitions/UUID",
+      "description": "Dueño del avatar."
+    },
     "avatar_id": {
       "$ref": "#/definitions/UUID"
     },
@@ -32,12 +36,22 @@
       "type": "boolean",
       "description": "`false` cuando, p. ej., un oversize de diseño queda regular o una talla mayor finge oversize."
     },
+    "size_offset": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Tallas de más (positivo) o de menos (negativo) respecto a la suya, medido en las zonas ancla (s_A de `docs/research/fit.md`). Distingue «talla mayor» de «oversize de diseño»."
+    },
     "score": {
       "$ref": "#/definitions/UnitInterval",
       "description": "Ajuste respecto a las preferencias del usuario; entra en el ranking con peso 0,3."
     },
     "recommended_size_label": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Talla recomendada si no es `size_label`."
     },
     "method": {
@@ -52,6 +66,7 @@
   },
   "required": [
     "id",
+    "user_id",
     "avatar_id",
     "garment_id",
     "size_label",
@@ -65,7 +80,7 @@
     "created_at"
   ],
   "additionalProperties": false,
-  "description": "Resultado de ajuste de una prenda y talla sobre un avatar.",
+  "description": "Resultado de ajuste de una prenda y talla sobre un avatar: cómo le queda a ESTA persona. El fit de diseño es otra cosa y vive en `Garment.design_fit`.",
   "definitions": {
     "UUID": {
       "type": "string",
@@ -86,10 +101,43 @@
         },
         "ease_cm": {
           "type": "number",
-          "description": "`garment_cm − body_cm`; negativo si la prenda es más pequeña que el cuerpo."
+          "description": "`garment_cm · (1 + stretch) − body_cm` en contornos, `garment_cm − body_cm` en largos; negativo si la prenda es más pequeña que el cuerpo."
+        },
+        "ease_sigma_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Incertidumbre (1σ) de `ease_cm`: √(σ_cuerpo² + σ_prenda²). La app muestra la holgura como banda cuando existe."
         },
         "verdict": {
-          "$ref": "#/definitions/ZoneVerdict"
+          "$ref": "#/definitions/ZoneVerdict",
+          "description": "Veredicto más probable."
+        },
+        "verdict_probabilities": {
+          "type": "object",
+          "properties": {
+            "too_tight": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "snug": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "ideal": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "loose": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_loose": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_short": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_long": {
+              "$ref": "#/definitions/UnitInterval"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Probabilidad de cada veredicto dada la incertidumbre; suman 1."
         }
       },
       "required": [
@@ -112,13 +160,15 @@
         "hip",
         "sleeve_length",
         "bicep",
+        "cuff",
         "body_length",
         "thigh",
+        "knee",
         "inseam",
         "rise",
         "hem"
       ],
-      "description": "Zona de medida compartida entre prenda y fit. En contornos (`chest`, `waist`, `hip`, `neck`, `bicep`, `thigh`, `hem`) la medida de la prenda es el perímetro completo, no el ancho en plano."
+      "description": "Zona de medida compartida entre prenda y fit. En contornos (`chest`, `waist`, `hip`, `neck`, `bicep`, `cuff`, `thigh`, `knee`, `hem`) la medida de la prenda es el perímetro completo, no el ancho en plano."
     },
     "Centimeters": {
       "type": "number",
@@ -136,6 +186,12 @@
         "too_short",
         "too_long"
       ]
+    },
+    "UnitInterval": {
+      "type": "number",
+      "description": "Valor normalizado entre 0 y 1.",
+      "minimum": 0,
+      "maximum": 1
     },
     "FitVerdict": {
       "type": "string",
@@ -155,12 +211,6 @@
         "oversize"
       ],
       "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
-    },
-    "UnitInterval": {
-      "type": "number",
-      "description": "Valor normalizado entre 0 y 1.",
-      "minimum": 0,
-      "maximum": 1
     },
     "FitMethod": {
       "type": "string",

@@ -11,6 +11,27 @@
  * - Fechas en ISO 8601 UTC. Identificadores UUID v4/v7.
  * - Los JSON Schemas de `schemas/` se GENERAN desde este fichero
  *   (`npm run schemas`); no se editan a mano.
+ *
+ * Ficheros en Storage: `*_url` (contrato) frente a `*_path` (base de datos)
+ * ------------------------------------------------------------------------
+ * Los campos `*_url` de las entidades que apuntan a Storage privado tienen
+ * tres representaciones, según dónde viaje el dato:
+ *
+ * 1. Worker → API (`JobCallback.output`) y `jobs.output`: una referencia
+ *    `storage://<StoragePath>` con la ruta exacta de `output_uploads[].path`
+ *    (tipo `StorageRef`). El worker nunca inventa rutas.
+ * 2. Postgres: la RUTA, en una columna `*_path` (ver `STORAGE_URL_COLUMNS`).
+ *    Es lo que la app lee con PostgREST.
+ * 3. App: una URL https firmada y temporal, que la app obtiene firmando la
+ *    ruta (`storage.from(bucket).createSignedUrl(ruta sin bucket, ttl)`).
+ *    No se persiste.
+ *
+ * Los tipos de este fichero describen la forma de cable (1 y 3). Una fila de
+ * Postgres es el mismo objeto con cada `X_url` sustituido por `X_path`.
+ *
+ * Estado: todos los tipos que tienen tabla (`Profile`, `Consent`, `Avatar`,
+ * `ColorProfile`, `Garment`, `FitResult`, `UserFitPreferences`, `Outfit`,
+ * `StoreProduct`, `DrapeCache`, `Job`) usan los nombres de columna de la tabla.
  */
 
 // ---------------------------------------------------------------------------
@@ -36,11 +57,40 @@ export type ISODateTime = string;
 export type HexColor = string;
 
 /**
- * URL https. Para objetos privados de Storage es una URL firmada que caduca:
- * no se persiste en cliente más allá de la sesión.
+ * URL absoluta. Siempre `https://` fuera del desarrollo local (en local se
+ * admite `http://localhost`). Para objetos privados de Storage es una URL
+ * firmada que caduca: no se persiste en cliente más allá de la sesión.
+ *
+ * En `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos
+ * de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que
+ * también es una URI válida. Ver la cabecera del fichero.
  * @format uri
  */
 export type Url = string;
+
+/** Prefijo de las referencias a Storage en callbacks y en `jobs.output`. */
+export const STORAGE_REF_PREFIX = "storage://";
+
+/**
+ * Referencia a un objeto de Storage: `storage://<StoragePath>`.
+ * @pattern ^storage://[^/]+/.+
+ */
+export type StorageRef = string;
+
+/**
+ * Campo `*_url` del contrato → columna `*_path` de Postgres que guarda su ruta.
+ * `StoreProduct.image_urls` y `affiliate_url` son URLs públicas reales y no
+ * están aquí.
+ */
+export const STORAGE_URL_COLUMNS = {
+  "Avatar.glb_url": "avatars.glb_path",
+  "Garment.image_url": "garments.image_path",
+  "Garment.glb_url": "garments.glb_path",
+  "Garment.sewing_pattern_url": "garments.sewing_pattern_path",
+  "Outfit.preview_url": "outfits.preview_path",
+  "DrapeCache.glb_url": "drape_cache.glb_path",
+  "DrapeJobOutput.glb_url": "drape_cache.glb_path",
+} as const;
 
 /**
  * Ruta de un objeto en Storage, `bucket/carpeta/fichero`.
@@ -119,37 +169,37 @@ export interface BodyMeasurements {
   weight_kg?: number;
 }
 
-export const BODY_MODELS = ["smplx", "anny"] as const;
-/** Modelo corporal paramétrico. `anny` es la alternativa de licencia abierta. */
+/** Clave de una medida corporal de longitud (todas las de `BodyMeasurements` salvo el peso). */
+export type BodyMeasurementKey = Exclude<keyof BodyMeasurements, "weight_kg">;
+
+export const BODY_MODELS = ["mhr", "anny", "smplx"] as const;
+/**
+ * Modelo corporal paramétrico con el que se generó el avatar. El resto del
+ * sistema (visor, prenda, drapeado, fit) NO depende de su topología: solo usa
+ * el GLB y las medidas. `mhr` (Momentum Human Rig, Apache 2.0) es el de la
+ * fase 0; `anny` (Apache 2.0 / CC0) es la alternativa abierta; `smplx` solo es
+ * válido si se firma licencia comercial y no se usa en producción sin ella.
+ */
 export type BodyModel = (typeof BODY_MODELS)[number];
 
 export const BODY_MODEL_GENDERS = ["neutral", "female", "male"] as const;
 export type BodyModelGender = (typeof BODY_MODEL_GENDERS)[number];
 
 /**
- * Parámetros del modelo corporal. Con `betas` y `gender` basta para
- * reconstruir la forma; la pose de la foto se descarta y el avatar se entrega
- * en la pose canónica.
+ * Forma del cuerpo en el espacio de parámetros de `Avatar.body_model`. Solo
+ * la interpreta el pipeline de avatar (reajuste tras corregir medidas); nadie
+ * más debe leerla. La pose de la foto se descarta: el avatar se entrega en la
+ * pose canónica y el esqueleto viaja dentro del GLB.
  */
-export interface SmplxParams {
-  gender: BodyModelGender;
+export interface BodyShape {
   /**
-   * Coeficientes de forma.
-   * @minItems 10
-   * @maxItems 300
+   * Vector de forma: identidad de MHR (45), fenotipos de Anny o betas de SMPL-X.
+   * @minItems 1
+   * @maxItems 512
    */
-  betas: number[];
-  /**
-   * Pose corporal en eje-ángulo, 21 articulaciones × 3. Opcional.
-   * @minItems 63
-   * @maxItems 63
-   */
-  body_pose?: number[];
-  /**
-   * Coeficientes de expresión facial. Opcional.
-   * @maxItems 100
-   */
-  expression?: number[];
+  params: number[];
+  /** Solo para modelos con variantes por género; MHR no lo usa. */
+  gender?: BodyModelGender;
 }
 
 export const MEASUREMENT_SOURCES = [
@@ -157,8 +207,12 @@ export const MEASUREMENT_SOURCES = [
   "photo_reference_object",
   "lidar",
   "manual",
+  "unmeasured",
 ] as const;
-/** Cómo se obtuvieron las medidas. */
+/**
+ * Cómo se obtuvieron las medidas. `unmeasured`: no hay medidas reales (los
+ * valores son marcadores, p. ej. de un worker fake) y no deben usarse para fit.
+ */
 export type MeasurementSource = (typeof MEASUREMENT_SOURCES)[number];
 
 export const AVATAR_POSES = ["a_pose", "t_pose", "relaxed"] as const;
@@ -169,15 +223,27 @@ export interface Avatar {
   id: UUID;
   user_id: UUID;
   body_model: BodyModel;
-  /** Versión del modelo corporal y del pipeline, p. ej. `smplx-1.1/avatar-0.3`. */
+  /**
+   * Versión del modelo corporal y del pipeline, p. ej. `mhr-1.0/avatar-0.3`.
+   * Empieza por `fake/` si lo generó un worker en modo fake.
+   */
   model_version: string;
-  /** Parámetros del modelo corporal (se llaman `smplx` aunque el modelo sea compatible). */
-  smplx: SmplxParams;
+  /** Forma en el espacio de `body_model`. */
+  shape: BodyShape;
+  /** Medidas ISO 8559-1 tomadas sobre la malla en pose canónica. */
   measurements: BodyMeasurements;
   measurements_source: MeasurementSource;
+  /**
+   * Incertidumbre (1σ, en cm) de cada medida estimada; el fit la propaga a la
+   * holgura. Ausente si no se ha estimado.
+   */
+  measurements_sigma_cm?: Partial<Record<BodyMeasurementKey, Centimeters>> | null;
   /** Medidas corregidas a mano por el usuario; prevalecen sobre `measurements`. */
-  measurements_override?: Partial<BodyMeasurements>;
-  /** GLB del avatar en `pose`, en metros, Y arriba, pies en el origen. */
+  measurements_override?: Partial<BodyMeasurements> | null;
+  /**
+   * GLB del avatar en `pose` (malla + esqueleto), en metros, Y arriba, pies en
+   * el origen. Es la única geometría que consumen visor y drapeado.
+   */
   glb_url: Url;
   pose: AvatarPose;
   /** Cambia cuando cambia la forma; forma parte de la clave de caché del drapeado. */
@@ -224,7 +290,30 @@ export const CONTRAST_LEVELS = ["low", "medium", "high"] as const;
 export type ContrastLevel = (typeof CONTRAST_LEVELS)[number];
 
 export const METALS = ["gold", "silver", "rose_gold", "any"] as const;
+/** `any` equivale al «mixto» de `docs/research/color.md`. */
 export type Metal = (typeof METALS)[number];
+
+export const COLOR_QUALITY_FLAGS = [
+  "no_white_reference",
+  "mixed_lighting",
+  "underexposed",
+  "overexposed",
+  "color_cast",
+  "low_resolution",
+  "face_too_small",
+  "hair_not_visible",
+  "eyes_not_visible",
+  "makeup_or_filter_suspected",
+] as const;
+/** Avisos de calidad de la captura; bajan la confianza o piden repetir. */
+export type ColorQualityFlag = (typeof COLOR_QUALITY_FLAGS)[number];
+
+/** Calidad de la captura del selfie. */
+export interface ColorCaptureQuality {
+  flags: ColorQualityFlag[];
+  /** 0 = inservible, 1 = captura ideal. */
+  capture_score: UnitInterval;
+}
 
 /** Paletas recomendadas, en hex para pintarlas tal cual. */
 export interface ColorPalettes {
@@ -239,7 +328,11 @@ export interface ColorPalettes {
   avoid: HexColor[];
 }
 
-/** Valores continuos de los que salen las categorías; sirven para explicar el resultado. */
+/**
+ * Valores continuos de los que salen las categorías, normalizados para
+ * explicarlos en la interfaz. El pipeline calcula T, V y S como z-scores y K
+ * como ΔL* (`docs/research/color.md`) y los proyecta a estos rangos.
+ */
 export interface ColorScores {
   /**
    * −1 = frío, +1 = cálido.
@@ -260,7 +353,14 @@ export interface SeasonCandidate {
   confidence: UnitInterval;
 }
 
-/** Perfil de color del usuario. Solo valores calculados: el selfie se borra. */
+/**
+ * Perfil de color del usuario. Solo valores calculados: el selfie se borra.
+ * Es el tipo único del proyecto; la propuesta de `docs/research/color.md` §7
+ * se corresponde así: `chroma` → `intensity`, `alternatives[].probability` →
+ * `confidence`, `best`/`avoid`/`neutrals` → `palettes`, `measurements.skin` →
+ * `skin_lab` (ídem pelo y ojos), `measurements.ita`/`skinHue` → `ita` /
+ * `skin_hue_deg`, `algorithmVersion` → `pipeline_version`, metal `mixed` → `any`.
+ */
 export interface ColorProfile {
   id: UUID;
   user_id: UUID;
@@ -272,20 +372,38 @@ export interface ColorProfile {
   scores: ColorScores;
   /** Colores medidos tras corregir con la referencia de blanco. */
   skin_lab: LabColor;
-  hair_lab?: LabColor;
-  eye_lab?: LabColor;
+  hair_lab?: LabColor | null;
+  /** `true` si el pelo parece teñido: entonces no cuenta para la estación. */
+  hair_dyed?: boolean | null;
+  eye_lab?: LabColor | null;
+  /** Individual Typology Angle de la piel, en grados. */
+  ita?: number | null;
+  /**
+   * Ángulo de tono de la piel en CIELAB, en grados.
+   * @minimum 0
+   * @maximum 360
+   */
+  skin_hue_deg?: number | null;
   palettes: ColorPalettes;
   metal: Metal;
   /** Confianza de `season`. */
   confidence: UnitInterval;
-  /** Otras estaciones plausibles, de mayor a menor confianza. */
-  alternatives?: SeasonCandidate[];
+  /**
+   * Otras estaciones plausibles, de mayor a menor confianza.
+   * @maxItems 3
+   */
+  alternatives?: SeasonCandidate[] | null;
   /** Si hubo referencia de blanco válida; sin ella la confianza baja. */
   white_balanced: boolean;
+  /** Avisos de calidad de la captura. Ausente en perfiles elegidos a mano. */
+  quality?: ColorCaptureQuality | null;
   /** `true` si el usuario eligió la estación a mano. */
   user_overridden?: boolean;
+  /** Empieza por `fake/` si lo generó un worker en modo fake. */
   pipeline_version: string;
   created_at: ISODateTime;
+  /** Cambia cuando el usuario corrige la estación o la paleta. */
+  updated_at: ISODateTime;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,18 +437,32 @@ export const FIT_ZONES = [
   "hip",
   "sleeve_length",
   "bicep",
+  "cuff",
   "body_length",
   "thigh",
+  "knee",
   "inseam",
   "rise",
   "hem",
 ] as const;
 /**
  * Zona de medida compartida entre prenda y fit. En contornos (`chest`,
- * `waist`, `hip`, `neck`, `bicep`, `thigh`, `hem`) la medida de la prenda es
- * el perímetro completo, no el ancho en plano.
+ * `waist`, `hip`, `neck`, `bicep`, `cuff`, `thigh`, `knee`, `hem`) la medida
+ * de la prenda es el perímetro completo, no el ancho en plano.
  */
 export type FitZone = (typeof FIT_ZONES)[number];
+
+/**
+ * Zonas ancla: corresponden a la talla de la persona aunque el diseño sea
+ * oversize (`docs/research/fit.md` §3). El resto de zonas son de volumen.
+ */
+export const ANCHOR_FIT_ZONES = [
+  "neck",
+  "cuff",
+  "waist",
+  "sleeve_length",
+  "body_length",
+] as const satisfies readonly FitZone[];
 
 /** Medidas de una prenda por zona, en cm. */
 export type ZoneMeasurements = Partial<Record<FitZone, Centimeters>>;
@@ -383,11 +515,32 @@ export type SleeveLength = (typeof SLEEVE_LENGTHS)[number];
 export const GARMENT_LENGTHS = ["cropped", "regular", "long", "mini", "midi", "maxi"] as const;
 export type GarmentLength = (typeof GARMENT_LENGTHS)[number];
 
+export const FABRIC_PRESETS = [
+  "knit_light",
+  "knit_heavy",
+  "woven_light",
+  "woven_stiff",
+  "denim",
+  "silk",
+] as const;
+/** Preajuste de tejido del simulador (rigidez a tracción y flexión, densidad). */
+export type FabricPreset = (typeof FABRIC_PRESETS)[number];
+
 /** Atributos del etiquetado automático; todos corregibles por el usuario. */
 export interface GarmentAttributes {
+  /** Estampado (no confundir con el patrón de costura, `sewing_pattern_url`). */
   pattern?: GarmentPattern;
   /** Material principal en texto libre normalizado: `cotton`, `denim`, `wool`. */
   material?: string;
+  /** Tejido para la simulación; forma parte de la clave de caché del drapeado. */
+  fabric?: FabricPreset;
+  /**
+   * Elasticidad del tejido: 0 en plano, 0,05–0,15 en punto, hasta 0,3 con
+   * elastano. Entra en la holgura de los contornos.
+   * @minimum 0
+   * @maximum 1
+   */
+  stretch?: number;
   sleeve_length?: SleeveLength;
   /** `crew`, `v`, `collar`, `hood`… */
   neckline?: string;
@@ -401,47 +554,106 @@ export interface GarmentAttributes {
 }
 
 export const GARMENT_LEVELS = [1, 2, 3] as const;
-/** 1 = plantilla paramétrica + textura; 2 = patrón desde foto; 3 = 3D nativo de marca. */
+/**
+ * 1 = configuración cerrada de GarmentCode por categoría + textura;
+ * 2 = parámetros libres de GarmentCode estimados desde la foto;
+ * 3 = 3D nativo de marca (sin patrón).
+ */
 export type GarmentLevel = (typeof GARMENT_LEVELS)[number];
 
 export const GARMENT_STATUSES = ["processing", "ready", "failed"] as const;
 export type GarmentStatus = (typeof GARMENT_STATUSES)[number];
 
-/** Prenda del armario del usuario o normalizada desde un producto de tienda. */
-export interface Garment {
+export const SEWING_PATTERN_FORMATS = ["garmentcode"] as const;
+/** Formato del patrón de costura. Niveles 1 y 2: especificación de GarmentCode (JSON). */
+export type SewingPatternFormat = (typeof SEWING_PATTERN_FORMATS)[number];
+
+/** Campos comunes a todos los estados de una prenda. */
+interface GarmentCommon {
   id: UUID;
   /** Dueño. `null` en prendas de catálogo de tienda. */
   user_id: UUID | null;
   /** Producto de tienda del que procede, si lo hay. */
   store_product_id?: UUID | null;
-  status: GarmentStatus;
-  category: GarmentCategory;
-  name?: string;
-  brand?: string;
+  name?: string | null;
+  brand?: string | null;
   attributes: GarmentAttributes;
-  /**
-   * Colores dominantes, de mayor a menor proporción.
-   * @minItems 1
-   */
-  colors: GarmentColor[];
-  design_fit: DesignFit;
   /** Talla que tiene el usuario (armario) o `null` si es de catálogo. */
   size_label: string | null;
   /** Medidas por talla; en el armario suele haber una sola. */
   measurements: GarmentSizeMeasurements[];
   level: GarmentLevel;
-  /** Plantilla paramétrica usada (nivel 1). */
-  template_id?: string;
-  /** Recorte de la prenda sin fondo ni persona. La foto original no se conserva. */
-  image_url: Url;
-  /** GLB de la prenda en reposo; `null` mientras `status` es `processing`. */
-  glb_url: Url | null;
+  /** Configuración de GarmentCode usada como plantilla (nivel 1). */
+  template_id?: string | null;
   /** Campos que el usuario corrigió a mano; el pipeline no los pisa. */
   user_corrected_fields?: string[];
+  /** `pending` hasta que el pipeline la procesa; `fake/…` si la generó un worker fake. */
   pipeline_version: string;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
+
+/**
+ * Prenda recién creada (`processing`) o cuyo job falló (`failed`): el pipeline
+ * aún no ha rellenado nada, así que todo lo que produce es opcional.
+ */
+export interface PendingGarment extends GarmentCommon {
+  status: "processing" | "failed";
+  category?: GarmentCategory | null;
+  /** Colores dominantes; vacío hasta que el pipeline los mide. */
+  colors: GarmentColor[];
+  design_fit?: DesignFit | null;
+  design_fit_confidence?: UnitInterval | null;
+  image_url?: Url | null;
+  glb_url?: Url | null;
+  sewing_pattern_url?: Url | null;
+  sewing_pattern_format?: SewingPatternFormat | null;
+}
+
+/** Prenda procesada. Es lo que devuelve el job `garment`. */
+export interface ReadyGarment extends GarmentCommon {
+  status: "ready";
+  category: GarmentCategory;
+  /**
+   * Colores dominantes, de mayor a menor proporción.
+   * @minItems 1
+   */
+  colors: GarmentColor[];
+  /** Fit con el que se diseñó: atributo de la prenda, no depende de quién la lleve. */
+  design_fit: DesignFit;
+  /** Confianza del clasificador de `design_fit`. */
+  design_fit_confidence?: UnitInterval | null;
+  /** Recorte de la prenda sin fondo ni persona. La foto original no se conserva. */
+  image_url: Url;
+  /** GLB de la prenda en reposo. `null` si no se pudo generar el 3D: no se puede drapear. */
+  glb_url: Url | null;
+  /**
+   * Patrón de costura (paneles, costuras y colocación) del que sale el GLB y
+   * que el drapeado simula. `null` en prendas de nivel 3.
+   */
+  sewing_pattern_url: Url | null;
+  sewing_pattern_format?: SewingPatternFormat | null;
+}
+
+/**
+ * Prenda del armario del usuario o normalizada desde un producto de tienda.
+ * Unión discriminada por `status`.
+ */
+export type Garment = PendingGarment | ReadyGarment;
+
+/** Embedding de imagen de la prenda para recomendaciones (pgvector, coseno). */
+export interface GarmentEmbedding {
+  /** Modelo que lo generó, p. ej. `fashion-clip-vit-b32`. */
+  model: string;
+  /**
+   * @minItems 512
+   * @maxItems 512
+   */
+  vector: number[];
+}
+
+/** Dimensión de `GarmentEmbedding.vector` (columna `garments.embedding vector(512)`). */
+export const GARMENT_EMBEDDING_DIMENSIONS = 512;
 
 // ---------------------------------------------------------------------------
 // Fit
@@ -463,9 +675,20 @@ export interface ZoneFit {
   zone: FitZone;
   body_cm: Centimeters;
   garment_cm: Centimeters;
-  /** `garment_cm − body_cm`; negativo si la prenda es más pequeña que el cuerpo. */
+  /**
+   * `garment_cm · (1 + stretch) − body_cm` en contornos, `garment_cm − body_cm`
+   * en largos; negativo si la prenda es más pequeña que el cuerpo.
+   */
   ease_cm: number;
+  /**
+   * Incertidumbre (1σ) de `ease_cm`: √(σ_cuerpo² + σ_prenda²). La app muestra
+   * la holgura como banda cuando existe.
+   */
+  ease_sigma_cm?: Centimeters;
+  /** Veredicto más probable. */
   verdict: ZoneVerdict;
+  /** Probabilidad de cada veredicto dada la incertidumbre; suman 1. */
+  verdict_probabilities?: Partial<Record<ZoneVerdict, UnitInterval>>;
 }
 
 export const FIT_VERDICTS = ["too_small", "fits", "too_large"] as const;
@@ -475,9 +698,14 @@ export type FitVerdict = (typeof FIT_VERDICTS)[number];
 export const FIT_METHODS = ["size_chart", "measured", "simulated"] as const;
 export type FitMethod = (typeof FIT_METHODS)[number];
 
-/** Resultado de ajuste de una prenda y talla sobre un avatar. */
+/**
+ * Resultado de ajuste de una prenda y talla sobre un avatar: cómo le queda a
+ * ESTA persona. El fit de diseño es otra cosa y vive en `Garment.design_fit`.
+ */
 export interface FitResult {
   id: UUID;
+  /** Dueño del avatar. */
+  user_id: UUID;
   avatar_id: UUID;
   garment_id: UUID;
   size_label: string;
@@ -488,10 +716,16 @@ export interface FitResult {
   effective_fit: DesignFit;
   /** `false` cuando, p. ej., un oversize de diseño queda regular o una talla mayor finge oversize. */
   matches_design_fit: boolean;
+  /**
+   * Tallas de más (positivo) o de menos (negativo) respecto a la suya, medido
+   * en las zonas ancla (s_A de `docs/research/fit.md`). Distingue «talla
+   * mayor» de «oversize de diseño».
+   */
+  size_offset?: number | null;
   /** Ajuste respecto a las preferencias del usuario; entra en el ranking con peso 0,3. */
   score: UnitInterval;
   /** Talla recomendada si no es `size_label`. */
-  recommended_size_label?: string;
+  recommended_size_label?: string | null;
   method: FitMethod;
   confidence: UnitInterval;
   created_at: ISODateTime;
@@ -526,15 +760,16 @@ export type OutfitSource = (typeof OUTFIT_SOURCES)[number];
 export interface Outfit {
   id: UUID;
   user_id: UUID;
-  avatar_id: UUID;
-  name?: string;
+  /** `null` si el usuario borró el avatar: el outfit se conserva sin él. */
+  avatar_id: UUID | null;
+  name?: string | null;
   /** @minItems 1 */
   items: OutfitItem[];
   source: OutfitSource;
-  scores?: OutfitScores;
-  occasion?: string;
+  scores?: OutfitScores | null;
+  occasion?: string | null;
   /** Miniatura renderizada del outfit. */
-  preview_url?: Url;
+  preview_url?: Url | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -595,6 +830,80 @@ export interface StoreProduct {
 }
 
 // ---------------------------------------------------------------------------
+// Usuario: perfil, consentimientos y preferencias de fit
+// ---------------------------------------------------------------------------
+
+/** Perfil mínimo del usuario (tabla `profiles`). Se crea al darse de alta. */
+export interface Profile {
+  /** Igual al id del usuario de Auth. */
+  id: UUID;
+  /** @maxLength 80 */
+  display_name: string | null;
+  /**
+   * @pattern ^[a-z]{2}(-[A-Z]{2})?$
+   */
+  locale: string;
+  /** Cuándo declaró cumplir la edad mínima; no se guarda la fecha de nacimiento. */
+  age_confirmed_at: ISODateTime | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export const CONSENT_PURPOSES = [
+  "body_scan",
+  "color_analysis",
+  "personalization",
+  "analytics",
+] as const;
+/** Tratamiento que ampara el consentimiento (`docs/architecture.md` §4). */
+export type ConsentPurpose = (typeof CONSENT_PURPOSES)[number];
+
+/** Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`. */
+export interface Consent {
+  id: UUID;
+  user_id: UUID;
+  purpose: ConsentPurpose;
+  /**
+   * Versión del texto legal aceptado, p. ej. `body_scan-2026-11`.
+   * @minLength 1
+   * @maxLength 64
+   */
+  text_version: string;
+  granted_at: ISODateTime;
+  withdrawn_at: ISODateTime | null;
+  created_at: ISODateTime;
+}
+
+/** Holgura preferida en una zona (`docs/research/fit.md` §6). */
+export interface EasePreference {
+  /** Holgura objetivo μ, en cm. */
+  preferred_cm: number;
+  /** Tolerancia σ, en cm. */
+  tolerance_cm: Centimeters;
+  /**
+   * Opiniones que la respaldan (la prenda favorita cuenta como 3).
+   * @minimum 0
+   * @asType integer
+   */
+  observations: number;
+}
+
+/** Preferencias de fit del usuario (tabla `user_fit_preferences`, una fila por usuario). */
+export interface UserFitPreferences {
+  user_id: UUID;
+  /** Fit preferido por defecto. */
+  default_fit: DesignFit;
+  /** Fit preferido por categoría: `{ "jeans": "slim" }`. */
+  fit_by_category: Partial<Record<GarmentCategory, DesignFit>>;
+  /** Holgura preferida por categoría y zona; se actualiza con cada opinión. */
+  ease_by_category: Partial<Record<GarmentCategory, Partial<Record<FitZone, EasePreference>>>>;
+  /** Gusto por siluetas oversize de diseño, aparte de la talla. `null` = sin dato. */
+  likes_oversize: boolean | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+// ---------------------------------------------------------------------------
 // Jobs
 // ---------------------------------------------------------------------------
 
@@ -628,9 +937,16 @@ export const JOB_ERROR_CODES = [
   "garment_not_detected",
   "low_image_quality",
   "consent_missing",
+  "quota_exceeded",
+  "not_implemented",
   "timeout",
   "internal",
 ] as const;
+/**
+ * Motivo por el que falla un job. `not_implemented`: el worker aún no tiene
+ * pipeline real para ese tipo (no reintentar). `quota_exceeded`: se agotó una
+ * cuota (del usuario o del proveedor de GPU).
+ */
 export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];
 
 export interface JobError {
@@ -656,11 +972,9 @@ export interface AvatarJobInput {
   consent_id: UUID;
 }
 
-/** Salida del job `avatar`. */
+/** Salida del job `avatar`. El borrado de la foto lo hace y lo anota la API (`Job.input_deleted_at`). */
 export interface AvatarJobOutput {
   avatar: Avatar;
-  /** Momento en que se borró la foto de entrada. */
-  input_deleted_at: ISODateTime;
 }
 
 /** Entrada del job `color`. */
@@ -674,7 +988,6 @@ export interface ColorJobInput {
 /** Salida del job `color`. */
 export interface ColorJobOutput {
   color_profile: ColorProfile;
-  input_deleted_at: ISODateTime;
 }
 
 /** Entrada del job `garment`. */
@@ -694,15 +1007,19 @@ export interface GarmentJobInput {
 
 /** Salida del job `garment`. */
 export interface GarmentJobOutput {
-  garment: Garment;
-  /** Momento en que se borraron las fotos originales (queda solo el recorte). */
-  input_deleted_at: ISODateTime;
+  garment: ReadyGarment;
+  /** Embedding para recomendaciones; la API lo guarda en `garments.embedding` y no lo sirve a la app. */
+  embedding?: GarmentEmbedding;
 }
 
 export const DRAPE_QUALITIES = ["preview", "final"] as const;
 export type DrapeQuality = (typeof DRAPE_QUALITIES)[number];
 
-/** Entrada del job `drape`. */
+/**
+ * Entrada del job `drape` tal como la envía la app: solo identificadores. La
+ * API resuelve lo que el simulador necesita y lo añade al despacho en
+ * `DrapeJobDispatch.context`.
+ */
 export interface DrapeJobInput {
   avatar_id: UUID;
   garment_id: UUID;
@@ -711,15 +1028,97 @@ export interface DrapeJobInput {
   quality: DrapeQuality;
 }
 
+/** Cuerpo sobre el que se drapea. La malla de colisión es el GLB; no hace falta la topología. */
+export interface DrapeAvatarContext {
+  /** GLB del avatar; su URL de descarga está en `input_urls[glb_path]`. */
+  glb_path: StoragePath;
+  body_model: BodyModel;
+  model_version: string;
+  shape_hash: string;
+  /** Medidas efectivas: `measurements` con `measurements_override` ya aplicado. */
+  measurements: BodyMeasurements;
+  measurements_sigma_cm?: Partial<Record<BodyMeasurementKey, Centimeters>> | null;
+}
+
+/** Prenda que se drapea. Al menos uno de `sewing_pattern_path` y `glb_path` no es `null`. */
+export interface DrapeGarmentContext {
+  /** Patrón de costura (GarmentCode); su URL está en `input_urls`. `null` en nivel 3. */
+  sewing_pattern_path: StoragePath | null;
+  sewing_pattern_format: SewingPatternFormat | null;
+  /** GLB en reposo; su URL está en `input_urls`. */
+  glb_path: StoragePath | null;
+  level: GarmentLevel;
+  category: GarmentCategory;
+  design_fit: DesignFit;
+  /** Incluye `fabric` y `stretch`, que eligen los parámetros de tejido. */
+  attributes: GarmentAttributes;
+  /** Medidas de la prenda en la talla pedida, si se conocen. */
+  measurements: GarmentSizeMeasurements | null;
+}
+
+/** Todo lo que el simulador necesita además de `DrapeJobInput`. Lo rellena la API. */
+export interface DrapeJobContext {
+  /** Clave de caché calculada por la API; el worker la devuelve tal cual en la salida. */
+  cache_key: string;
+  /** Versión del simulador con la que se calculó `cache_key`. */
+  simulator_version: string;
+  avatar: DrapeAvatarContext;
+  garment: DrapeGarmentContext;
+}
+
+/** Indicadores de calidad de la simulación. */
+export interface DrapeQualityReport {
+  /**
+   * Intersecciones tela–cuerpo o tela–tela que quedan.
+   * @minimum 0
+   * @asType integer
+   */
+  intersections: number;
+  /**
+   * Costuras que no llegaron a cerrar.
+   * @minimum 0
+   * @asType integer
+   */
+  open_seams: number;
+  /** `true` si la relajación alcanzó el umbral de velocidad antes del tope de pasos. */
+  converged: boolean;
+}
+
 /** Salida del job `drape`. */
 export interface DrapeJobOutput {
   /** GLB de la prenda ya drapeada, en el mismo sistema de coordenadas que el avatar. */
   glb_url: Url;
-  /** hash(shape_hash, garment_id, versión de prenda, talla, pose, calidad, versión del simulador). */
+  /** La de `DrapeJobContext.cache_key`: hash(shape_hash, prenda y su versión, talla, pose, calidad, tejido, versión del simulador). */
   cache_key: string;
-  /** `true` si salió de `drape_cache` sin simular. */
+  /** `true` si salió de `drape_cache` sin simular. El worker envía siempre `false`. */
   cache_hit: boolean;
   fit_result?: FitResult;
+  quality_report?: DrapeQualityReport;
+}
+
+/** Entrada de la caché de drapeado (tabla `drape_cache`); una por usuario y `cache_key`. */
+export interface DrapeCache {
+  id: UUID;
+  user_id: UUID;
+  cache_key: string;
+  avatar_id: UUID;
+  garment_id: UUID;
+  size_label: string;
+  pose: AvatarPose;
+  quality: DrapeQuality;
+  /** `shape_hash` del avatar cuando se simuló. */
+  shape_hash: string;
+  simulator_version: string;
+  /** GLB de la prenda drapeada. */
+  glb_url: Url;
+  fit_result_id: UUID | null;
+  /**
+   * @minimum 0
+   * @asType integer
+   */
+  hit_count: number;
+  last_used_at: ISODateTime;
+  created_at: ISODateTime;
 }
 
 interface JobBase<T extends JobType, I, O> {
@@ -744,7 +1143,18 @@ interface JobBase<T extends JobType, I, O> {
    */
   attempts: number;
   /** Versión del worker que lo procesó. */
-  worker_version?: string;
+  worker_version?: string | null;
+  /**
+   * `true` si el resultado lo generó un worker en modo fake: los datos
+   * derivados son de pega y no deben mostrarse como reales.
+   */
+  fake: boolean;
+  /**
+   * Momento en que la API borró las fotos de entrada de `raw-uploads`. Lo
+   * escribe solo la API (el worker no puede borrar ni lo declara). `null`
+   * mientras no se hayan borrado o si el job no tiene fotos (drapeado).
+   */
+  input_deleted_at: ISODateTime | null;
   created_at: ISODateTime;
   started_at: ISODateTime | null;
   finished_at: ISODateTime | null;
@@ -772,30 +1182,59 @@ export interface JobOutputByType {
   color: ColorJobOutput;
 }
 
-/** Cuerpo de `POST /functions/v1/jobs`: lo que la app envía para crear un job. */
+/** Cuerpo de `POST /functions/v1/create-job`: lo que la app envía para crear un job. */
 export type CreateJobRequest =
   | { type: "avatar"; input: AvatarJobInput }
   | { type: "garment"; input: GarmentJobInput }
   | { type: "drape"; input: DrapeJobInput }
   | { type: "color"; input: ColorJobInput };
 
-/** Una URL firmada de subida que la API entrega al worker para un artefacto de salida. */
-export interface SignedUpload {
-  /** Nombre lógico del artefacto: `glb`, `image`, `preview`. */
-  name: string;
+/**
+ * Una foto que la app tiene que subir antes de que el job se despache. Se sube
+ * con `storage.from("raw-uploads").uploadToSignedUrl(<ruta sin bucket>, token, fichero)`.
+ * Caduca a las 2 h (límite fijo de Supabase) y solo admite una subida.
+ */
+export interface UploadTicket {
   path: StoragePath;
-  upload_url: Url;
+  signed_url: Url;
+  token: string;
 }
 
+/** Respuesta 201 de `POST /functions/v1/create-job`. */
+export interface CreateJobResponse {
+  job: Job;
+  /** Vacío si no hay nada que subir (drapeado, o fotos ya subidas): el job ya está despachado. */
+  uploads: UploadTicket[];
+}
+
+export const OUTPUT_ARTIFACT_NAMES = ["glb", "image", "sewing_pattern", "preview"] as const;
+/** Nombre lógico de un artefacto de salida. */
+export type OutputArtifactName = (typeof OUTPUT_ARTIFACT_NAMES)[number];
+
 /**
- * Lo que la API envía al worker al despachar un job. El worker no recibe
- * credenciales de la base de datos: solo URLs firmadas de vida corta.
+ * Una URL firmada de subida que la API entrega al worker para un artefacto de
+ * salida. Se sube con un único `PUT` del fichero a `upload_url` con la cabecera
+ * `Content-Type: <content_type>`; no admite una segunda subida. La ruta es
+ * única por job e intento y caduca a las 2 h (límite fijo de Supabase).
  */
-export interface JobDispatch {
+export interface SignedUpload {
+  name: OutputArtifactName;
+  path: StoragePath;
+  upload_url: Url;
+  /** Tipo MIME esperado: `model/gltf-binary`, `image/png`, `application/json`. */
+  content_type: string;
+}
+
+interface JobDispatchBase<T extends JobType, I> {
   job_id: UUID;
-  type: JobType;
-  input: AvatarJobInput | GarmentJobInput | DrapeJobInput | ColorJobInput;
-  /** URLs firmadas de descarga, una por cada ruta de entrada, indexadas por ruta. */
+  /** Dueño del job; el worker lo copia en las entidades de salida. `null` en jobs de catálogo. */
+  user_id: UUID | null;
+  type: T;
+  input: I;
+  /**
+   * URLs firmadas de descarga (15 min), indexadas por `StoragePath`: una por
+   * cada ruta de `input` y, en el drapeado, por cada ruta de `context`.
+   */
   input_urls: Record<string, Url>;
   /** URLs firmadas donde subir los artefactos de salida. */
   output_uploads: SignedUpload[];
@@ -807,13 +1246,35 @@ export interface JobDispatch {
    * @asType integer
    */
   attempt: number;
+  /** `CONTRACTS_VERSION` de la API que despacha. */
+  contracts_version: string;
+}
+
+export type AvatarJobDispatch = JobDispatchBase<"avatar", AvatarJobInput>;
+export type GarmentJobDispatch = JobDispatchBase<"garment", GarmentJobInput>;
+export type ColorJobDispatch = JobDispatchBase<"color", ColorJobInput>;
+export interface DrapeJobDispatch extends JobDispatchBase<"drape", DrapeJobInput> {
+  /** Cuerpo, prenda y clave de caché que el simulador necesita. */
+  context: DrapeJobContext;
 }
 
 /**
- * Lo que el worker envía a `callback_url`, firmado con HMAC-SHA256 en la
- * cabecera `x-probador-signature`. En `output`, los campos `*_url` de los
- * artefactos que subió el worker van como `storage://<path de output_uploads>`;
- * la API los convierte en rutas al persistir y en URLs firmadas al servir.
+ * Lo que la API envía al worker al despachar un job (`POST` firmado, ver
+ * «Firma de peticiones entre API y workers»). Unión discriminada por `type`.
+ * El worker no recibe credenciales de la base de datos: solo URLs firmadas.
+ */
+export type JobDispatch =
+  | AvatarJobDispatch
+  | GarmentJobDispatch
+  | DrapeJobDispatch
+  | ColorJobDispatch;
+
+/**
+ * Lo que el worker envía a `callback_url` (`POST` firmado, igual que el
+ * despacho). En `output`, los campos `*_url` de los artefactos que subió el
+ * worker van como `storage://<path de output_uploads>` (`StorageRef`); la API
+ * los convierte en rutas al persistir. Con `succeeded` es obligatorio
+ * `output` (del tipo del job) y con `failed`, `error`.
  */
 export interface JobCallback {
   job_id: UUID;
@@ -825,6 +1286,81 @@ export interface JobCallback {
   output?: AvatarJobOutput | GarmentJobOutput | DrapeJobOutput | ColorJobOutput;
   error?: JobError;
   worker_version: string;
+  /**
+   * Marca estándar de salida falsa: `true` si el worker corre en modo fake.
+   * La API la copia a `Job.fake` y la rechaza salvo que se haya permitido de
+   * forma explícita (nunca en producción). Además, por convención, los
+   * `model_version` / `pipeline_version` de salidas falsas empiezan por
+   * `FAKE_VERSION_PREFIX`.
+   */
+  fake?: boolean;
+}
+
+/** Prefijo de `model_version` / `pipeline_version` en salidas de un worker fake. */
+export const FAKE_VERSION_PREFIX = "fake/";
+
+// ---------------------------------------------------------------------------
+// Firma de peticiones entre API y workers
+// ---------------------------------------------------------------------------
+//
+// El despacho (API → worker) y el callback (worker → API) se autentican igual:
+//
+//   x-probador-timestamp: <segundos Unix, entero en decimal>
+//   x-probador-signature: sha256=<hex en minúsculas de
+//       HMAC-SHA256(secreto, "<timestamp>" + "." + <bytes exactos del cuerpo>)>
+//
+// - El HMAC se calcula sobre los bytes del cuerpo tal como se envían; quien
+//   verifica usa el cuerpo crudo recibido, sin volver a serializar el JSON.
+// - Quien verifica rechaza (401) si falta una cabecera, si la firma no
+//   coincide (comparación en tiempo constante) o si el timestamp se aleja más
+//   de `SIGNATURE_TOLERANCE_SECONDS` de su reloj. Eso acota los reenvíos a esa
+//   ventana; dentro de ella, despacho y callback son idempotentes por
+//   (`job_id`, `attempt`).
+// - Un secreto por sentido, de 32 bytes aleatorios o más, con el mismo nombre
+//   de variable en los dos lados: `PROBADOR_DISPATCH_SECRET` (API → worker) y
+//   `PROBADOR_CALLBACK_SECRET` (worker → API).
+// - Vector de prueba compartido: `fixtures/signature-vector.json`.
+
+export const SIGNATURE_HEADER = "x-probador-signature";
+export const SIGNATURE_TIMESTAMP_HEADER = "x-probador-timestamp";
+export const SIGNATURE_PREFIX = "sha256=";
+/** Desfase máximo admitido entre el timestamp firmado y el reloj de quien verifica. */
+export const SIGNATURE_TOLERANCE_SECONDS = 300;
+
+// ---------------------------------------------------------------------------
+// Errores de la API
+// ---------------------------------------------------------------------------
+
+export const API_ERROR_CODES = [
+  "invalid_json",
+  "invalid_input",
+  "unauthorized",
+  "invalid_signature",
+  "consent_missing",
+  "quota_exceeded",
+  "not_found",
+  "conflict",
+  "method_not_allowed",
+  "invalid_callback",
+  "fake_not_allowed",
+  "input_deletion_failed",
+  "confirmation_required",
+  "storage_not_empty",
+  "auth_delete_failed",
+  "internal",
+] as const;
+/** `consent_missing` y `quota_exceeded` coinciden con `JobErrorCode`. */
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+/** Cuerpo de toda respuesta de error (4xx/5xx) de las Edge Functions. */
+export interface ApiErrorBody {
+  error: {
+    code: ApiErrorCode;
+    /** Mensaje técnico en inglés; la app traduce `code`. */
+    message: string;
+    /** Detalle estructurado, p. ej. los errores de validación (`{ path, message }[]`). */
+    details?: unknown;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -843,4 +1379,4 @@ export const RANKING_WEIGHTS = {
 } as const;
 
 /** Versión del contrato. Sube el mayor cuando un cambio rompe a los workers. */
-export const CONTRACTS_VERSION = "0.1.0";
+export const CONTRACTS_VERSION = "0.2.0";

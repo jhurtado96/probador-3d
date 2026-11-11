@@ -70,7 +70,7 @@
       "additionalProperties": false
     }
   ],
-  "description": "Cuerpo de `POST /functions/v1/jobs`: lo que la app envía para crear un job.",
+  "description": "Cuerpo de `POST /functions/v1/create-job`: lo que la app envía para crear un job.",
   "definitions": {
     "AvatarJobInput": {
       "type": "object",
@@ -201,7 +201,7 @@
         "quality"
       ],
       "additionalProperties": false,
-      "description": "Entrada del job `drape`."
+      "description": "Entrada del job `drape` tal como la envía la app: solo identificadores. La API resuelve lo que el simulador necesita y lo añade al despacho en `DrapeJobDispatch.context`."
     },
     "AvatarPose": {
       "type": "string",

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "purpose": {
+      "$ref": "#/definitions/ConsentPurpose"
+    },
+    "text_version": {
+      "type": "string",
+      "description": "Versión del texto legal aceptado, p. ej. `body_scan-2026-11`.",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "granted_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "withdrawn_at": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "id",
+    "user_id",
+    "purpose",
+    "text_version",
+    "granted_at",
+    "withdrawn_at",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "description": "Consentimiento explícito por tratamiento (tabla `consents`). Retirar = `withdrawn_at`.",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "ConsentPurpose": {
+      "type": "string",
+      "enum": [
+        "body_scan",
+        "color_analysis",
+        "personalization",
+        "analytics"
+      ],
+      "description": "Tratamiento que ampara el consentimiento (`docs/architecture.md` §4)."
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/consent.schema.json",
+  "title": "Consent"
+}

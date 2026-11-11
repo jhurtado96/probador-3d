@@ -12,17 +12,36 @@
     "quality": "preview"
   },
   "output": {
-    "glb_url": "https://example.supabase.co/storage/v1/object/sign/drapes/abc.glb?token=x",
+    "glb_url": "storage://assets/5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01/drapes/7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f-a1.glb",
     "cache_key": "sha256:3b1f",
     "cache_hit": false,
     "fit_result": {
       "id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+      "user_id": "5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01",
       "avatar_id": "11111111-2222-4333-8444-555555555555",
       "garment_id": "66666666-7777-4888-9999-aaaaaaaaaaaa",
       "size_label": "M",
       "zones": [
-        { "zone": "chest", "body_cm": 96, "garment_cm": 106, "ease_cm": 10, "verdict": "ideal" },
-        { "zone": "sleeve_length", "body_cm": 61, "garment_cm": 58, "ease_cm": -3, "verdict": "too_short" }
+        {
+          "zone": "chest",
+          "body_cm": 96,
+          "garment_cm": 106,
+          "ease_cm": 10,
+          "verdict": "ideal",
+          "ease_sigma_cm": 4,
+          "verdict_probabilities": {
+            "snug": 0.2,
+            "ideal": 0.6,
+            "loose": 0.2
+          }
+        },
+        {
+          "zone": "sleeve_length",
+          "body_cm": 61,
+          "garment_cm": 58,
+          "ease_cm": -3,
+          "verdict": "too_short"
+        }
       ],
       "verdict": "fits",
       "effective_fit": "regular",
@@ -30,12 +49,20 @@
       "score": 0.82,
       "method": "simulated",
       "confidence": 0.7,
-      "created_at": "2026-11-11T10:02:00Z"
+      "created_at": "2026-11-11T10:02:00Z",
+      "size_offset": 0
+    },
+    "quality_report": {
+      "intersections": 0,
+      "open_seams": 0,
+      "converged": true
     }
   },
   "error": null,
   "attempts": 1,
   "worker_version": "drape-0.1.0",
+  "fake": false,
+  "input_deleted_at": null,
   "created_at": "2026-11-11T10:00:00Z",
   "started_at": "2026-11-11T10:00:05Z",
   "finished_at": "2026-11-11T10:02:00Z"

@@ -43,6 +43,10 @@
     },
     "worker_version": {
       "type": "string"
+    },
+    "fake": {
+      "type": "boolean",
+      "description": "Marca estándar de salida falsa: `true` si el worker corre en modo fake. La API la copia a `Job.fake` y la rechaza salvo que se haya permitido de forma explícita (nunca en producción). Además, por convención, los `model_version` / `pipeline_version` de salidas falsas empiezan por `FAKE_VERSION_PREFIX`."
     }
   },
   "required": [
@@ -52,7 +56,7 @@
     "worker_version"
   ],
   "additionalProperties": false,
-  "description": "Lo que el worker envía a `callback_url`, firmado con HMAC-SHA256 en la cabecera `x-probador-signature`. En `output`, los campos `*_url` de los artefactos que subió el worker van como `storage://<path de output_uploads>`; la API los convierte en rutas al persistir y en URLs firmadas al servir.",
+  "description": "Lo que el worker envía a `callback_url` (`POST` firmado, igual que el despacho). En `output`, los campos `*_url` de los artefactos que subió el worker van como `storage://<path de output_uploads>` (`StorageRef`); la API los convierte en rutas al persistir. Con `succeeded` es obligatorio `output` (del tipo del job) y con `failed`, `error`.",
   "definitions": {
     "UUID": {
       "type": "string",
@@ -70,18 +74,13 @@
       "properties": {
         "avatar": {
           "$ref": "#/definitions/Avatar"
-        },
-        "input_deleted_at": {
-          "$ref": "#/definitions/ISODateTime",
-          "description": "Momento en que se borró la foto de entrada."
         }
       },
       "required": [
-        "avatar",
-        "input_deleted_at"
+        "avatar"
       ],
       "additionalProperties": false,
-      "description": "Salida del job `avatar`."
+      "description": "Salida del job `avatar`. El borrado de la foto lo hace y lo anota la API (`Job.input_deleted_at`)."
     },
     "Avatar": {
       "type": "object",
@@ -97,83 +96,147 @@
         },
         "model_version": {
           "type": "string",
-          "description": "Versión del modelo corporal y del pipeline, p. ej. `smplx-1.1/avatar-0.3`."
+          "description": "Versión del modelo corporal y del pipeline, p. ej. `mhr-1.0/avatar-0.3`. Empieza por `fake/` si lo generó un worker en modo fake."
         },
-        "smplx": {
-          "$ref": "#/definitions/SmplxParams",
-          "description": "Parámetros del modelo corporal (se llaman `smplx` aunque el modelo sea compatible)."
+        "shape": {
+          "$ref": "#/definitions/BodyShape",
+          "description": "Forma en el espacio de `body_model`."
         },
         "measurements": {
-          "$ref": "#/definitions/BodyMeasurements"
+          "$ref": "#/definitions/BodyMeasurements",
+          "description": "Medidas ISO 8559-1 tomadas sobre la malla en pose canónica."
         },
         "measurements_source": {
           "$ref": "#/definitions/MeasurementSource"
         },
-        "measurements_override": {
-          "type": "object",
-          "properties": {
-            "height_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Altura declarada por el usuario; ancla la escala del avatar."
+        "measurements_sigma_cm": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "height_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "chest_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "waist_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "hip_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "shoulder_width_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "arm_length_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "inseam_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "neck_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "underbust_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "bicep_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "wrist_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "thigh_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "calf_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "torso_length_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                }
+              },
+              "additionalProperties": false
             },
-            "chest_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Contorno de pecho en el punto más ancho."
-            },
-            "waist_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Contorno de cintura natural."
-            },
-            "hip_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Contorno de cadera en el punto más ancho."
-            },
-            "shoulder_width_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Ancho de hombros, de acromion a acromion por la espalda."
-            },
-            "arm_length_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Largo de brazo, de acromion a muñeca."
-            },
-            "inseam_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Entrepierna, de la ingle al suelo."
-            },
-            "neck_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "underbust_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "bicep_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "wrist_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "thigh_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "calf_cm": {
-              "$ref": "#/definitions/Centimeters"
-            },
-            "torso_length_cm": {
-              "$ref": "#/definitions/Centimeters",
-              "description": "Largo de torso, de la séptima cervical a la cintura."
-            },
-            "weight_kg": {
-              "type": "number",
-              "description": "Peso declarado, opcional; mejora la estimación de forma.",
-              "minimum": 0
+            {
+              "type": "null"
             }
-          },
-          "additionalProperties": false,
+          ],
+          "description": "Incertidumbre (1σ, en cm) de cada medida estimada; el fit la propaga a la holgura. Ausente si no se ha estimado."
+        },
+        "measurements_override": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "height_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Altura declarada por el usuario; ancla la escala del avatar."
+                },
+                "chest_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Contorno de pecho en el punto más ancho."
+                },
+                "waist_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Contorno de cintura natural."
+                },
+                "hip_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Contorno de cadera en el punto más ancho."
+                },
+                "shoulder_width_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Ancho de hombros, de acromion a acromion por la espalda."
+                },
+                "arm_length_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Largo de brazo, de acromion a muñeca."
+                },
+                "inseam_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Entrepierna, de la ingle al suelo."
+                },
+                "neck_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "underbust_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "bicep_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "wrist_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "thigh_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "calf_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "torso_length_cm": {
+                  "$ref": "#/definitions/Centimeters",
+                  "description": "Largo de torso, de la séptima cervical a la cintura."
+                },
+                "weight_kg": {
+                  "type": "number",
+                  "description": "Peso declarado, opcional; mejora la estimación de forma.",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "Medidas corregidas a mano por el usuario; prevalecen sobre `measurements`."
         },
         "glb_url": {
           "$ref": "#/definitions/Url",
-          "description": "GLB del avatar en `pose`, en metros, Y arriba, pies en el origen."
+          "description": "GLB del avatar en `pose` (malla + esqueleto), en metros, Y arriba, pies en el origen. Es la única geometría que consumen visor y drapeado."
         },
         "pose": {
           "$ref": "#/definitions/AvatarPose"
@@ -198,7 +261,7 @@
         "user_id",
         "body_model",
         "model_version",
-        "smplx",
+        "shape",
         "measurements",
         "measurements_source",
         "glb_url",
@@ -214,50 +277,34 @@
     "BodyModel": {
       "type": "string",
       "enum": [
-        "smplx",
-        "anny"
+        "mhr",
+        "anny",
+        "smplx"
       ],
-      "description": "Modelo corporal paramétrico. `anny` es la alternativa de licencia abierta."
+      "description": "Modelo corporal paramétrico con el que se generó el avatar. El resto del sistema (visor, prenda, drapeado, fit) NO depende de su topología: solo usa el GLB y las medidas. `mhr` (Momentum Human Rig, Apache 2.0) es el de la fase 0; `anny` (Apache 2.0 / CC0) es la alternativa abierta; `smplx` solo es válido si se firma licencia comercial y no se usa en producción sin ella."
     },
-    "SmplxParams": {
+    "BodyShape": {
       "type": "object",
       "properties": {
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Vector de forma: identidad de MHR (45), fenotipos de Anny o betas de SMPL-X.",
+          "minItems": 1,
+          "maxItems": 512
+        },
         "gender": {
-          "$ref": "#/definitions/BodyModelGender"
-        },
-        "betas": {
-          "type": "array",
-          "items": {
-            "type": "number"
-          },
-          "description": "Coeficientes de forma.",
-          "minItems": 10,
-          "maxItems": 300
-        },
-        "body_pose": {
-          "type": "array",
-          "items": {
-            "type": "number"
-          },
-          "description": "Pose corporal en eje-ángulo, 21 articulaciones × 3. Opcional.",
-          "minItems": 63,
-          "maxItems": 63
-        },
-        "expression": {
-          "type": "array",
-          "items": {
-            "type": "number"
-          },
-          "description": "Coeficientes de expresión facial. Opcional.",
-          "maxItems": 100
+          "$ref": "#/definitions/BodyModelGender",
+          "description": "Solo para modelos con variantes por género; MHR no lo usa."
         }
       },
       "required": [
-        "gender",
-        "betas"
+        "params"
       ],
       "additionalProperties": false,
-      "description": "Parámetros del modelo corporal. Con `betas` y `gender` basta para reconstruir la forma; la pose de la foto se descarta y el avatar se entrega en la pose canónica."
+      "description": "Forma del cuerpo en el espacio de parámetros de `Avatar.body_model`. Solo la interpreta el pipeline de avatar (reajuste tras corregir medidas); nadie más debe leerla. La pose de la foto se descarta: el avatar se entrega en la pose canónica y el esqueleto viaja dentro del GLB."
     },
     "BodyModelGender": {
       "type": "string",
@@ -349,13 +396,14 @@
         "photo",
         "photo_reference_object",
         "lidar",
-        "manual"
+        "manual",
+        "unmeasured"
       ],
-      "description": "Cómo se obtuvieron las medidas."
+      "description": "Cómo se obtuvieron las medidas. `unmeasured`: no hay medidas reales (los valores son marcadores, p. ej. de un worker fake) y no deben usarse para fit."
     },
     "Url": {
       "type": "string",
-      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
       "format": "uri"
     },
     "AvatarPose": {
@@ -375,21 +423,20 @@
       "type": "object",
       "properties": {
         "garment": {
-          "$ref": "#/definitions/Garment"
+          "$ref": "#/definitions/ReadyGarment"
         },
-        "input_deleted_at": {
-          "$ref": "#/definitions/ISODateTime",
-          "description": "Momento en que se borraron las fotos originales (queda solo el recorte)."
+        "embedding": {
+          "$ref": "#/definitions/GarmentEmbedding",
+          "description": "Embedding para recomendaciones; la API lo guarda en `garments.embedding` y no lo sirve a la app."
         }
       },
       "required": [
-        "garment",
-        "input_deleted_at"
+        "garment"
       ],
       "additionalProperties": false,
       "description": "Salida del job `garment`."
     },
-    "Garment": {
+    "ReadyGarment": {
       "type": "object",
       "properties": {
         "id": {
@@ -417,31 +464,20 @@
           ],
           "description": "Producto de tienda del que procede, si lo hay."
         },
-        "status": {
-          "$ref": "#/definitions/GarmentStatus"
-        },
-        "category": {
-          "$ref": "#/definitions/GarmentCategory"
-        },
         "name": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "brand": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "attributes": {
           "$ref": "#/definitions/GarmentAttributes"
-        },
-        "colors": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/GarmentColor"
-          },
-          "description": "Colores dominantes, de mayor a menor proporción.",
-          "minItems": 1
-        },
-        "design_fit": {
-          "$ref": "#/definitions/DesignFit"
         },
         "size_label": {
           "type": [
@@ -461,8 +497,58 @@
           "$ref": "#/definitions/GarmentLevel"
         },
         "template_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Configuración de GarmentCode usada como plantilla (nivel 1)."
+        },
+        "user_corrected_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
+        },
+        "pipeline_version": {
           "type": "string",
-          "description": "Plantilla paramétrica usada (nivel 1)."
+          "description": "`pending` hasta que el pipeline la procesa; `fake/…` si la generó un worker fake."
+        },
+        "created_at": {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        "updated_at": {
+          "$ref": "#/definitions/ISODateTime"
+        },
+        "status": {
+          "type": "string",
+          "const": "ready"
+        },
+        "category": {
+          "$ref": "#/definitions/GarmentCategory"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GarmentColor"
+          },
+          "description": "Colores dominantes, de mayor a menor proporción.",
+          "minItems": 1
+        },
+        "design_fit": {
+          "$ref": "#/definitions/DesignFit",
+          "description": "Fit con el que se diseñó: atributo de la prenda, no depende de quién la lleve."
+        },
+        "design_fit_confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Confianza del clasificador de `design_fit`."
         },
         "image_url": {
           "$ref": "#/definitions/Url",
@@ -477,78 +563,71 @@
               "type": "null"
             }
           ],
-          "description": "GLB de la prenda en reposo; `null` mientras `status` es `processing`."
+          "description": "GLB de la prenda en reposo. `null` si no se pudo generar el 3D: no se puede drapear."
         },
-        "user_corrected_fields": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Campos que el usuario corrigió a mano; el pipeline no los pisa."
+        "sewing_pattern_url": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Url"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Patrón de costura (paneles, costuras y colocación) del que sale el GLB y que el drapeado simula. `null` en prendas de nivel 3."
         },
-        "pipeline_version": {
-          "type": "string"
-        },
-        "created_at": {
-          "$ref": "#/definitions/ISODateTime"
-        },
-        "updated_at": {
-          "$ref": "#/definitions/ISODateTime"
+        "sewing_pattern_format": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SewingPatternFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "id",
-        "user_id",
-        "status",
-        "category",
         "attributes",
+        "category",
         "colors",
-        "design_fit",
-        "size_label",
-        "measurements",
-        "level",
-        "image_url",
-        "glb_url",
-        "pipeline_version",
         "created_at",
-        "updated_at"
+        "design_fit",
+        "glb_url",
+        "id",
+        "image_url",
+        "level",
+        "measurements",
+        "pipeline_version",
+        "sewing_pattern_url",
+        "size_label",
+        "status",
+        "updated_at",
+        "user_id"
       ],
       "additionalProperties": false,
-      "description": "Prenda del armario del usuario o normalizada desde un producto de tienda."
-    },
-    "GarmentStatus": {
-      "type": "string",
-      "enum": [
-        "processing",
-        "ready",
-        "failed"
-      ]
-    },
-    "GarmentCategory": {
-      "type": "string",
-      "enum": [
-        "tshirt",
-        "shirt",
-        "sweater",
-        "hoodie",
-        "jacket",
-        "coat",
-        "dress",
-        "skirt",
-        "pants",
-        "jeans",
-        "shorts"
-      ]
+      "description": "Prenda procesada. Es lo que devuelve el job `garment`."
     },
     "GarmentAttributes": {
       "type": "object",
       "properties": {
         "pattern": {
-          "$ref": "#/definitions/GarmentPattern"
+          "$ref": "#/definitions/GarmentPattern",
+          "description": "Estampado (no confundir con el patrón de costura, `sewing_pattern_url`)."
         },
         "material": {
           "type": "string",
           "description": "Material principal en texto libre normalizado: `cotton`, `denim`, `wool`."
+        },
+        "fabric": {
+          "$ref": "#/definitions/FabricPreset",
+          "description": "Tejido para la simulación; forma parte de la clave de caché del drapeado."
+        },
+        "stretch": {
+          "type": "number",
+          "description": "Elasticidad del tejido: 0 en plano, 0,05–0,15 en punto, hasta 0,3 con elastano. Entra en la holgura de los contornos.",
+          "minimum": 0,
+          "maximum": 1
         },
         "sleeve_length": {
           "$ref": "#/definitions/SleeveLength"
@@ -594,6 +673,18 @@
         "other"
       ]
     },
+    "FabricPreset": {
+      "type": "string",
+      "enum": [
+        "knit_light",
+        "knit_heavy",
+        "woven_light",
+        "woven_stiff",
+        "denim",
+        "silk"
+      ],
+      "description": "Preajuste de tejido del simulador (rigidez a tracción y flexión, densidad)."
+    },
     "SleeveLength": {
       "type": "string",
       "enum": [
@@ -612,6 +703,112 @@
         "mini",
         "midi",
         "maxi"
+      ]
+    },
+    "GarmentSizeMeasurements": {
+      "type": "object",
+      "properties": {
+        "size_label": {
+          "type": "string",
+          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+        },
+        "zones": {
+          "$ref": "#/definitions/ZoneMeasurements"
+        },
+        "source": {
+          "$ref": "#/definitions/GarmentMeasurementSource"
+        }
+      },
+      "required": [
+        "size_label",
+        "zones",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
+    },
+    "ZoneMeasurements": {
+      "type": "object",
+      "properties": {
+        "neck": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "shoulder": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "chest": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "waist": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hip": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "cuff": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "body_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "knee": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "inseam": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "rise": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hem": {
+          "$ref": "#/definitions/Centimeters"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Medidas de una prenda por zona, en cm."
+    },
+    "GarmentMeasurementSource": {
+      "type": "string",
+      "enum": [
+        "brand_size_chart",
+        "photo_reference_object",
+        "lidar",
+        "manual",
+        "estimated"
+      ]
+    },
+    "GarmentLevel": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3
+      ],
+      "description": "1 = configuración cerrada de GarmentCode por categoría + textura; 2 = parámetros libres de GarmentCode estimados desde la foto; 3 = 3D nativo de marca (sin patrón)."
+    },
+    "GarmentCategory": {
+      "type": "string",
+      "enum": [
+        "tshirt",
+        "shirt",
+        "sweater",
+        "hoodie",
+        "jacket",
+        "coat",
+        "dress",
+        "skirt",
+        "pants",
+        "jeans",
+        "shorts"
       ]
     },
     "GarmentColor": {
@@ -687,89 +884,33 @@
       ],
       "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
     },
-    "GarmentSizeMeasurements": {
+    "SewingPatternFormat": {
+      "type": "string",
+      "const": "garmentcode",
+      "description": "Formato del patrón de costura. Niveles 1 y 2: especificación de GarmentCode (JSON)."
+    },
+    "GarmentEmbedding": {
       "type": "object",
       "properties": {
-        "size_label": {
+        "model": {
           "type": "string",
-          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+          "description": "Modelo que lo generó, p. ej. `fashion-clip-vit-b32`."
         },
-        "zones": {
-          "$ref": "#/definitions/ZoneMeasurements"
-        },
-        "source": {
-          "$ref": "#/definitions/GarmentMeasurementSource"
+        "vector": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 512,
+          "maxItems": 512
         }
       },
       "required": [
-        "size_label",
-        "zones",
-        "source"
+        "model",
+        "vector"
       ],
       "additionalProperties": false,
-      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
-    },
-    "ZoneMeasurements": {
-      "type": "object",
-      "properties": {
-        "neck": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "shoulder": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "chest": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "waist": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "hip": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "sleeve_length": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "bicep": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "body_length": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "thigh": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "inseam": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "rise": {
-          "$ref": "#/definitions/Centimeters"
-        },
-        "hem": {
-          "$ref": "#/definitions/Centimeters"
-        }
-      },
-      "additionalProperties": false,
-      "description": "Medidas de una prenda por zona, en cm."
-    },
-    "GarmentMeasurementSource": {
-      "type": "string",
-      "enum": [
-        "brand_size_chart",
-        "photo_reference_object",
-        "lidar",
-        "manual",
-        "estimated"
-      ]
-    },
-    "GarmentLevel": {
-      "type": "number",
-      "enum": [
-        1,
-        2,
-        3
-      ],
-      "description": "1 = plantilla paramétrica + textura; 2 = patrón desde foto; 3 = 3D nativo de marca."
+      "description": "Embedding de imagen de la prenda para recomendaciones (pgvector, coseno)."
     },
     "DrapeJobOutput": {
       "type": "object",
@@ -780,14 +921,17 @@
         },
         "cache_key": {
           "type": "string",
-          "description": "hash(shape_hash, garment_id, versión de prenda, talla, pose, calidad, versión del simulador)."
+          "description": "La de `DrapeJobContext.cache_key`: hash(shape_hash, prenda y su versión, talla, pose, calidad, tejido, versión del simulador)."
         },
         "cache_hit": {
           "type": "boolean",
-          "description": "`true` si salió de `drape_cache` sin simular."
+          "description": "`true` si salió de `drape_cache` sin simular. El worker envía siempre `false`."
         },
         "fit_result": {
           "$ref": "#/definitions/FitResult"
+        },
+        "quality_report": {
+          "$ref": "#/definitions/DrapeQualityReport"
         }
       },
       "required": [
@@ -803,6 +947,10 @@
       "properties": {
         "id": {
           "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "$ref": "#/definitions/UUID",
+          "description": "Dueño del avatar."
         },
         "avatar_id": {
           "$ref": "#/definitions/UUID"
@@ -831,12 +979,22 @@
           "type": "boolean",
           "description": "`false` cuando, p. ej., un oversize de diseño queda regular o una talla mayor finge oversize."
         },
+        "size_offset": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Tallas de más (positivo) o de menos (negativo) respecto a la suya, medido en las zonas ancla (s_A de `docs/research/fit.md`). Distingue «talla mayor» de «oversize de diseño»."
+        },
         "score": {
           "$ref": "#/definitions/UnitInterval",
           "description": "Ajuste respecto a las preferencias del usuario; entra en el ranking con peso 0,3."
         },
         "recommended_size_label": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Talla recomendada si no es `size_label`."
         },
         "method": {
@@ -851,6 +1009,7 @@
       },
       "required": [
         "id",
+        "user_id",
         "avatar_id",
         "garment_id",
         "size_label",
@@ -864,7 +1023,7 @@
         "created_at"
       ],
       "additionalProperties": false,
-      "description": "Resultado de ajuste de una prenda y talla sobre un avatar."
+      "description": "Resultado de ajuste de una prenda y talla sobre un avatar: cómo le queda a ESTA persona. El fit de diseño es otra cosa y vive en `Garment.design_fit`."
     },
     "ZoneFit": {
       "type": "object",
@@ -880,10 +1039,43 @@
         },
         "ease_cm": {
           "type": "number",
-          "description": "`garment_cm − body_cm`; negativo si la prenda es más pequeña que el cuerpo."
+          "description": "`garment_cm · (1 + stretch) − body_cm` en contornos, `garment_cm − body_cm` en largos; negativo si la prenda es más pequeña que el cuerpo."
+        },
+        "ease_sigma_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Incertidumbre (1σ) de `ease_cm`: √(σ_cuerpo² + σ_prenda²). La app muestra la holgura como banda cuando existe."
         },
         "verdict": {
-          "$ref": "#/definitions/ZoneVerdict"
+          "$ref": "#/definitions/ZoneVerdict",
+          "description": "Veredicto más probable."
+        },
+        "verdict_probabilities": {
+          "type": "object",
+          "properties": {
+            "too_tight": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "snug": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "ideal": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "loose": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_loose": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_short": {
+              "$ref": "#/definitions/UnitInterval"
+            },
+            "too_long": {
+              "$ref": "#/definitions/UnitInterval"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Probabilidad de cada veredicto dada la incertidumbre; suman 1."
         }
       },
       "required": [
@@ -906,13 +1098,15 @@
         "hip",
         "sleeve_length",
         "bicep",
+        "cuff",
         "body_length",
         "thigh",
+        "knee",
         "inseam",
         "rise",
         "hem"
       ],
-      "description": "Zona de medida compartida entre prenda y fit. En contornos (`chest`, `waist`, `hip`, `neck`, `bicep`, `thigh`, `hem`) la medida de la prenda es el perímetro completo, no el ancho en plano."
+      "description": "Zona de medida compartida entre prenda y fit. En contornos (`chest`, `waist`, `hip`, `neck`, `bicep`, `cuff`, `thigh`, `knee`, `hem`) la medida de la prenda es el perímetro completo, no el ancho en plano."
     },
     "ZoneVerdict": {
       "type": "string",
@@ -943,19 +1137,41 @@
         "simulated"
       ]
     },
+    "DrapeQualityReport": {
+      "type": "object",
+      "properties": {
+        "intersections": {
+          "type": "integer",
+          "description": "Intersecciones tela–cuerpo o tela–tela que quedan.",
+          "minimum": 0
+        },
+        "open_seams": {
+          "type": "integer",
+          "description": "Costuras que no llegaron a cerrar.",
+          "minimum": 0
+        },
+        "converged": {
+          "type": "boolean",
+          "description": "`true` si la relajación alcanzó el umbral de velocidad antes del tope de pasos."
+        }
+      },
+      "required": [
+        "intersections",
+        "open_seams",
+        "converged"
+      ],
+      "additionalProperties": false,
+      "description": "Indicadores de calidad de la simulación."
+    },
     "ColorJobOutput": {
       "type": "object",
       "properties": {
         "color_profile": {
           "$ref": "#/definitions/ColorProfile"
-        },
-        "input_deleted_at": {
-          "$ref": "#/definitions/ISODateTime"
         }
       },
       "required": [
-        "color_profile",
-        "input_deleted_at"
+        "color_profile"
       ],
       "additionalProperties": false,
       "description": "Salida del job `color`."
@@ -992,10 +1208,47 @@
           "description": "Colores medidos tras corregir con la referencia de blanco."
         },
         "hair_lab": {
-          "$ref": "#/definitions/LabColor"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabColor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hair_dyed": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "`true` si el pelo parece teñido: entonces no cuenta para la estación."
         },
         "eye_lab": {
-          "$ref": "#/definitions/LabColor"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabColor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ita": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Individual Typology Angle de la piel, en grados."
+        },
+        "skin_hue_deg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Ángulo de tono de la piel en CIELAB, en grados.",
+          "minimum": 0,
+          "maximum": 360
         },
         "palettes": {
           "$ref": "#/definitions/ColorPalettes"
@@ -1008,25 +1261,49 @@
           "description": "Confianza de `season`."
         },
         "alternatives": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/SeasonCandidate"
-          },
-          "description": "Otras estaciones plausibles, de mayor a menor confianza."
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/SeasonCandidate"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Otras estaciones plausibles, de mayor a menor confianza.",
+          "maxItems": 3
         },
         "white_balanced": {
           "type": "boolean",
           "description": "Si hubo referencia de blanco válida; sin ella la confianza baja."
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ColorCaptureQuality"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Avisos de calidad de la captura. Ausente en perfiles elegidos a mano."
         },
         "user_overridden": {
           "type": "boolean",
           "description": "`true` si el usuario eligió la estación a mano."
         },
         "pipeline_version": {
-          "type": "string"
+          "type": "string",
+          "description": "Empieza por `fake/` si lo generó un worker en modo fake."
         },
         "created_at": {
           "$ref": "#/definitions/ISODateTime"
+        },
+        "updated_at": {
+          "$ref": "#/definitions/ISODateTime",
+          "description": "Cambia cuando el usuario corrige la estación o la paleta."
         }
       },
       "required": [
@@ -1044,10 +1321,11 @@
         "confidence",
         "white_balanced",
         "pipeline_version",
-        "created_at"
+        "created_at",
+        "updated_at"
       ],
       "additionalProperties": false,
-      "description": "Perfil de color del usuario. Solo valores calculados: el selfie se borra."
+      "description": "Perfil de color del usuario. Solo valores calculados: el selfie se borra. Es el tipo único del proyecto; la propuesta de `docs/research/color.md` §7 se corresponde así: `chroma` → `intensity`, `alternatives[].probability` → `confidence`, `best`/`avoid`/`neutrals` → `palettes`, `measurements.skin` → `skin_lab` (ídem pelo y ojos), `measurements.ita`/`skinHue` → `ita` / `skin_hue_deg`, `algorithmVersion` → `pipeline_version`, metal `mixed` → `any`."
     },
     "ColorSeason": {
       "type": "string",
@@ -1131,7 +1409,7 @@
         "contrast"
       ],
       "additionalProperties": false,
-      "description": "Valores continuos de los que salen las categorías; sirven para explicar el resultado."
+      "description": "Valores continuos de los que salen las categorías, normalizados para explicarlos en la interfaz. El pipeline calcula T, V y S como z-scores y K como ΔL* (`docs/research/color.md`) y los proyecta a estos rangos."
     },
     "ColorPalettes": {
       "type": "object",
@@ -1180,7 +1458,8 @@
         "silver",
         "rose_gold",
         "any"
-      ]
+      ],
+      "description": "`any` equivale al «mixto» de `docs/research/color.md`."
     },
     "SeasonCandidate": {
       "type": "object",
@@ -1197,6 +1476,43 @@
         "confidence"
       ],
       "additionalProperties": false
+    },
+    "ColorCaptureQuality": {
+      "type": "object",
+      "properties": {
+        "flags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ColorQualityFlag"
+          }
+        },
+        "capture_score": {
+          "$ref": "#/definitions/UnitInterval",
+          "description": "0 = inservible, 1 = captura ideal."
+        }
+      },
+      "required": [
+        "flags",
+        "capture_score"
+      ],
+      "additionalProperties": false,
+      "description": "Calidad de la captura del selfie."
+    },
+    "ColorQualityFlag": {
+      "type": "string",
+      "enum": [
+        "no_white_reference",
+        "mixed_lighting",
+        "underexposed",
+        "overexposed",
+        "color_cast",
+        "low_resolution",
+        "face_too_small",
+        "hair_not_visible",
+        "eyes_not_visible",
+        "makeup_or_filter_suspected"
+      ],
+      "description": "Avisos de calidad de la captura; bajan la confianza o piden repetir."
     },
     "JobError": {
       "type": "object",
@@ -1233,9 +1549,12 @@
         "garment_not_detected",
         "low_image_quality",
         "consent_missing",
+        "quota_exceeded",
+        "not_implemented",
         "timeout",
         "internal"
-      ]
+      ],
+      "description": "Motivo por el que falla un job. `not_implemented`: el worker aún no tiene pipeline real para ese tipo (no reintentar). `quota_exceeded`: se agotó una cuota (del usuario o del proveedor de GPU)."
     }
   },
   "$id": "https://probador.app/schemas/job_callback.schema.json",

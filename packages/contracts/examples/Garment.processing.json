@@ -1,0 +1,21 @@
+{
+  "id": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+  "user_id": "5e2a9d7c-1b34-4c8a-8f10-7d6f3a2b9c01",
+  "status": "processing",
+  "category": null,
+  "name": null,
+  "brand": null,
+  "attributes": {},
+  "colors": [],
+  "design_fit": null,
+  "size_label": "M",
+  "measurements": [],
+  "level": 1,
+  "image_url": null,
+  "glb_url": null,
+  "sewing_pattern_url": null,
+  "user_corrected_fields": [],
+  "pipeline_version": "pending",
+  "created_at": "2026-11-11T10:01:00Z",
+  "updated_at": "2026-11-11T10:01:00Z"
+}

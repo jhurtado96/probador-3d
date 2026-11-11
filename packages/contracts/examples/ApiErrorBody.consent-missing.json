@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "consent_missing",
+    "message": "no active body_scan consent with that id"
+  }
+}

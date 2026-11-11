@@ -1,78 +1,90 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "job_id": {
-      "$ref": "#/definitions/UUID"
+  "anyOf": [
+    {
+      "$ref": "#/definitions/AvatarJobDispatch"
     },
-    "type": {
-      "$ref": "#/definitions/JobType"
+    {
+      "$ref": "#/definitions/GarmentJobDispatch"
     },
-    "input": {
-      "anyOf": [
-        {
+    {
+      "$ref": "#/definitions/DrapeJobDispatch"
+    },
+    {
+      "$ref": "#/definitions/ColorJobDispatch"
+    }
+  ],
+  "description": "Lo que la API envía al worker al despachar un job (`POST` firmado, ver «Firma de peticiones entre API y workers»). Unión discriminada por `type`. El worker no recibe credenciales de la base de datos: solo URLs firmadas.",
+  "definitions": {
+    "AvatarJobDispatch": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño del job; el worker lo copia en las entidades de salida. `null` en jobs de catálogo."
+        },
+        "type": {
+          "type": "string",
+          "const": "avatar"
+        },
+        "input": {
           "$ref": "#/definitions/AvatarJobInput"
         },
-        {
-          "$ref": "#/definitions/GarmentJobInput"
+        "input_urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Url"
+          },
+          "description": "URLs firmadas de descarga (15 min), indexadas por `StoragePath`: una por cada ruta de `input` y, en el drapeado, por cada ruta de `context`."
         },
-        {
-          "$ref": "#/definitions/DrapeJobInput"
+        "output_uploads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SignedUpload"
+          },
+          "description": "URLs firmadas donde subir los artefactos de salida."
         },
-        {
-          "$ref": "#/definitions/ColorJobInput"
+        "callback_url": {
+          "$ref": "#/definitions/Url",
+          "description": "Endpoint al que el worker informa del progreso y del resultado."
+        },
+        "attempt": {
+          "type": "integer",
+          "description": "Intento actual, empezando en 1.",
+          "minimum": 1
+        },
+        "contracts_version": {
+          "type": "string",
+          "description": "`CONTRACTS_VERSION` de la API que despacha."
         }
-      ]
-    },
-    "input_urls": {
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/Url"
       },
-      "description": "URLs firmadas de descarga, una por cada ruta de entrada, indexadas por ruta."
+      "required": [
+        "job_id",
+        "user_id",
+        "type",
+        "input",
+        "input_urls",
+        "output_uploads",
+        "callback_url",
+        "attempt",
+        "contracts_version"
+      ],
+      "additionalProperties": false
     },
-    "output_uploads": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/SignedUpload"
-      },
-      "description": "URLs firmadas donde subir los artefactos de salida."
-    },
-    "callback_url": {
-      "$ref": "#/definitions/Url",
-      "description": "Endpoint al que el worker informa del progreso y del resultado."
-    },
-    "attempt": {
-      "type": "integer",
-      "description": "Intento actual, empezando en 1.",
-      "minimum": 1
-    }
-  },
-  "required": [
-    "job_id",
-    "type",
-    "input",
-    "input_urls",
-    "output_uploads",
-    "callback_url",
-    "attempt"
-  ],
-  "additionalProperties": false,
-  "description": "Lo que la API envía al worker al despachar un job. El worker no recibe credenciales de la base de datos: solo URLs firmadas de vida corta.",
-  "definitions": {
     "UUID": {
       "type": "string",
       "description": "Identificador UUID.",
       "format": "uuid"
-    },
-    "JobType": {
-      "type": "string",
-      "enum": [
-        "avatar",
-        "garment",
-        "drape",
-        "color"
-      ]
     },
     "AvatarJobInput": {
       "type": "object",
@@ -121,6 +133,112 @@
         "female",
         "male"
       ]
+    },
+    "Url": {
+      "type": "string",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
+      "format": "uri"
+    },
+    "SignedUpload": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/OutputArtifactName"
+        },
+        "path": {
+          "$ref": "#/definitions/StoragePath"
+        },
+        "upload_url": {
+          "$ref": "#/definitions/Url"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "Tipo MIME esperado: `model/gltf-binary`, `image/png`, `application/json`."
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "upload_url",
+        "content_type"
+      ],
+      "additionalProperties": false,
+      "description": "Una URL firmada de subida que la API entrega al worker para un artefacto de salida. Se sube con un único `PUT` del fichero a `upload_url` con la cabecera `Content-Type: <content_type>`; no admite una segunda subida. La ruta es única por job e intento y caduca a las 2 h (límite fijo de Supabase)."
+    },
+    "OutputArtifactName": {
+      "type": "string",
+      "enum": [
+        "glb",
+        "image",
+        "sewing_pattern",
+        "preview"
+      ],
+      "description": "Nombre lógico de un artefacto de salida."
+    },
+    "GarmentJobDispatch": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño del job; el worker lo copia en las entidades de salida. `null` en jobs de catálogo."
+        },
+        "type": {
+          "type": "string",
+          "const": "garment"
+        },
+        "input": {
+          "$ref": "#/definitions/GarmentJobInput"
+        },
+        "input_urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Url"
+          },
+          "description": "URLs firmadas de descarga (15 min), indexadas por `StoragePath`: una por cada ruta de `input` y, en el drapeado, por cada ruta de `context`."
+        },
+        "output_uploads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SignedUpload"
+          },
+          "description": "URLs firmadas donde subir los artefactos de salida."
+        },
+        "callback_url": {
+          "$ref": "#/definitions/Url",
+          "description": "Endpoint al que el worker informa del progreso y del resultado."
+        },
+        "attempt": {
+          "type": "integer",
+          "description": "Intento actual, empezando en 1.",
+          "minimum": 1
+        },
+        "contracts_version": {
+          "type": "string",
+          "description": "`CONTRACTS_VERSION` de la API que despacha."
+        }
+      },
+      "required": [
+        "job_id",
+        "user_id",
+        "type",
+        "input",
+        "input_urls",
+        "output_uploads",
+        "callback_url",
+        "attempt",
+        "contracts_version"
+      ],
+      "additionalProperties": false
     },
     "GarmentJobInput": {
       "type": "object",
@@ -171,6 +289,76 @@
         "shorts"
       ]
     },
+    "DrapeJobDispatch": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño del job; el worker lo copia en las entidades de salida. `null` en jobs de catálogo."
+        },
+        "type": {
+          "type": "string",
+          "const": "drape"
+        },
+        "input": {
+          "$ref": "#/definitions/DrapeJobInput"
+        },
+        "input_urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Url"
+          },
+          "description": "URLs firmadas de descarga (15 min), indexadas por `StoragePath`: una por cada ruta de `input` y, en el drapeado, por cada ruta de `context`."
+        },
+        "output_uploads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SignedUpload"
+          },
+          "description": "URLs firmadas donde subir los artefactos de salida."
+        },
+        "callback_url": {
+          "$ref": "#/definitions/Url",
+          "description": "Endpoint al que el worker informa del progreso y del resultado."
+        },
+        "attempt": {
+          "type": "integer",
+          "description": "Intento actual, empezando en 1.",
+          "minimum": 1
+        },
+        "contracts_version": {
+          "type": "string",
+          "description": "`CONTRACTS_VERSION` de la API que despacha."
+        },
+        "context": {
+          "$ref": "#/definitions/DrapeJobContext",
+          "description": "Cuerpo, prenda y clave de caché que el simulador necesita."
+        }
+      },
+      "required": [
+        "attempt",
+        "callback_url",
+        "context",
+        "contracts_version",
+        "input",
+        "input_urls",
+        "job_id",
+        "output_uploads",
+        "type",
+        "user_id"
+      ],
+      "additionalProperties": false
+    },
     "DrapeJobInput": {
       "type": "object",
       "properties": {
@@ -198,7 +386,7 @@
         "quality"
       ],
       "additionalProperties": false,
-      "description": "Entrada del job `drape`."
+      "description": "Entrada del job `drape` tal como la envía la app: solo identificadores. La API resuelve lo que el simulador necesita y lo añade al despacho en `DrapeJobDispatch.context`."
     },
     "AvatarPose": {
       "type": "string",
@@ -214,6 +402,539 @@
         "preview",
         "final"
       ]
+    },
+    "DrapeJobContext": {
+      "type": "object",
+      "properties": {
+        "cache_key": {
+          "type": "string",
+          "description": "Clave de caché calculada por la API; el worker la devuelve tal cual en la salida."
+        },
+        "simulator_version": {
+          "type": "string",
+          "description": "Versión del simulador con la que se calculó `cache_key`."
+        },
+        "avatar": {
+          "$ref": "#/definitions/DrapeAvatarContext"
+        },
+        "garment": {
+          "$ref": "#/definitions/DrapeGarmentContext"
+        }
+      },
+      "required": [
+        "cache_key",
+        "simulator_version",
+        "avatar",
+        "garment"
+      ],
+      "additionalProperties": false,
+      "description": "Todo lo que el simulador necesita además de `DrapeJobInput`. Lo rellena la API."
+    },
+    "DrapeAvatarContext": {
+      "type": "object",
+      "properties": {
+        "glb_path": {
+          "$ref": "#/definitions/StoragePath",
+          "description": "GLB del avatar; su URL de descarga está en `input_urls[glb_path]`."
+        },
+        "body_model": {
+          "$ref": "#/definitions/BodyModel"
+        },
+        "model_version": {
+          "type": "string"
+        },
+        "shape_hash": {
+          "type": "string"
+        },
+        "measurements": {
+          "$ref": "#/definitions/BodyMeasurements",
+          "description": "Medidas efectivas: `measurements` con `measurements_override` ya aplicado."
+        },
+        "measurements_sigma_cm": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "height_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "chest_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "waist_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "hip_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "shoulder_width_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "arm_length_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "inseam_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "neck_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "underbust_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "bicep_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "wrist_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "thigh_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "calf_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                },
+                "torso_length_cm": {
+                  "$ref": "#/definitions/Centimeters"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "glb_path",
+        "body_model",
+        "model_version",
+        "shape_hash",
+        "measurements"
+      ],
+      "additionalProperties": false,
+      "description": "Cuerpo sobre el que se drapea. La malla de colisión es el GLB; no hace falta la topología."
+    },
+    "BodyModel": {
+      "type": "string",
+      "enum": [
+        "mhr",
+        "anny",
+        "smplx"
+      ],
+      "description": "Modelo corporal paramétrico con el que se generó el avatar. El resto del sistema (visor, prenda, drapeado, fit) NO depende de su topología: solo usa el GLB y las medidas. `mhr` (Momentum Human Rig, Apache 2.0) es el de la fase 0; `anny` (Apache 2.0 / CC0) es la alternativa abierta; `smplx` solo es válido si se firma licencia comercial y no se usa en producción sin ella."
+    },
+    "BodyMeasurements": {
+      "type": "object",
+      "properties": {
+        "height_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Altura declarada por el usuario; ancla la escala del avatar."
+        },
+        "chest_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de pecho en el punto más ancho."
+        },
+        "waist_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cintura natural."
+        },
+        "hip_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Contorno de cadera en el punto más ancho."
+        },
+        "shoulder_width_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Ancho de hombros, de acromion a acromion por la espalda."
+        },
+        "arm_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de brazo, de acromion a muñeca."
+        },
+        "inseam_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Entrepierna, de la ingle al suelo."
+        },
+        "neck_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "underbust_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "wrist_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "calf_cm": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "torso_length_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Largo de torso, de la séptima cervical a la cintura."
+        },
+        "weight_kg": {
+          "type": "number",
+          "description": "Peso declarado, opcional; mejora la estimación de forma.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "height_cm",
+        "chest_cm",
+        "waist_cm",
+        "hip_cm",
+        "shoulder_width_cm",
+        "arm_length_cm",
+        "inseam_cm"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas del cuerpo en cm. Los contornos son perímetros completos. Las obligatorias son las que el fit del MVP necesita; el resto depende del método de medición."
+    },
+    "DrapeGarmentContext": {
+      "type": "object",
+      "properties": {
+        "sewing_pattern_path": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/StoragePath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Patrón de costura (GarmentCode); su URL está en `input_urls`. `null` en nivel 3."
+        },
+        "sewing_pattern_format": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SewingPatternFormat"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "glb_path": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/StoragePath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "GLB en reposo; su URL está en `input_urls`."
+        },
+        "level": {
+          "$ref": "#/definitions/GarmentLevel"
+        },
+        "category": {
+          "$ref": "#/definitions/GarmentCategory"
+        },
+        "design_fit": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "attributes": {
+          "$ref": "#/definitions/GarmentAttributes",
+          "description": "Incluye `fabric` y `stretch`, que eligen los parámetros de tejido."
+        },
+        "measurements": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GarmentSizeMeasurements"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Medidas de la prenda en la talla pedida, si se conocen."
+        }
+      },
+      "required": [
+        "sewing_pattern_path",
+        "sewing_pattern_format",
+        "glb_path",
+        "level",
+        "category",
+        "design_fit",
+        "attributes",
+        "measurements"
+      ],
+      "additionalProperties": false,
+      "description": "Prenda que se drapea. Al menos uno de `sewing_pattern_path` y `glb_path` no es `null`."
+    },
+    "SewingPatternFormat": {
+      "type": "string",
+      "const": "garmentcode",
+      "description": "Formato del patrón de costura. Niveles 1 y 2: especificación de GarmentCode (JSON)."
+    },
+    "GarmentLevel": {
+      "type": "number",
+      "enum": [
+        1,
+        2,
+        3
+      ],
+      "description": "1 = configuración cerrada de GarmentCode por categoría + textura; 2 = parámetros libres de GarmentCode estimados desde la foto; 3 = 3D nativo de marca (sin patrón)."
+    },
+    "DesignFit": {
+      "type": "string",
+      "enum": [
+        "slim",
+        "regular",
+        "relaxed",
+        "oversize"
+      ],
+      "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
+    },
+    "GarmentAttributes": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "$ref": "#/definitions/GarmentPattern",
+          "description": "Estampado (no confundir con el patrón de costura, `sewing_pattern_url`)."
+        },
+        "material": {
+          "type": "string",
+          "description": "Material principal en texto libre normalizado: `cotton`, `denim`, `wool`."
+        },
+        "fabric": {
+          "$ref": "#/definitions/FabricPreset",
+          "description": "Tejido para la simulación; forma parte de la clave de caché del drapeado."
+        },
+        "stretch": {
+          "type": "number",
+          "description": "Elasticidad del tejido: 0 en plano, 0,05–0,15 en punto, hasta 0,3 con elastano. Entra en la holgura de los contornos.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/SleeveLength"
+        },
+        "neckline": {
+          "type": "string",
+          "description": "`crew`, `v`, `collar`, `hood`…"
+        },
+        "length": {
+          "$ref": "#/definitions/GarmentLength"
+        },
+        "seasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Estaciones del año: `summer`, `winter`…"
+        },
+        "formality": {
+          "type": "string",
+          "description": "`casual`, `smart`, `formal`, `sport`."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Etiquetas libres."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Atributos del etiquetado automático; todos corregibles por el usuario."
+    },
+    "GarmentPattern": {
+      "type": "string",
+      "enum": [
+        "solid",
+        "stripes",
+        "checks",
+        "floral",
+        "print",
+        "graphic",
+        "other"
+      ]
+    },
+    "FabricPreset": {
+      "type": "string",
+      "enum": [
+        "knit_light",
+        "knit_heavy",
+        "woven_light",
+        "woven_stiff",
+        "denim",
+        "silk"
+      ],
+      "description": "Preajuste de tejido del simulador (rigidez a tracción y flexión, densidad)."
+    },
+    "SleeveLength": {
+      "type": "string",
+      "enum": [
+        "sleeveless",
+        "short",
+        "three_quarter",
+        "long"
+      ]
+    },
+    "GarmentLength": {
+      "type": "string",
+      "enum": [
+        "cropped",
+        "regular",
+        "long",
+        "mini",
+        "midi",
+        "maxi"
+      ]
+    },
+    "GarmentSizeMeasurements": {
+      "type": "object",
+      "properties": {
+        "size_label": {
+          "type": "string",
+          "description": "Etiqueta de talla tal como la escribe la marca: `M`, `40`, `32/34`."
+        },
+        "zones": {
+          "$ref": "#/definitions/ZoneMeasurements"
+        },
+        "source": {
+          "$ref": "#/definitions/GarmentMeasurementSource"
+        }
+      },
+      "required": [
+        "size_label",
+        "zones",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "Medidas de una prenda en una talla concreta (fila de `garment_measurements`)."
+    },
+    "ZoneMeasurements": {
+      "type": "object",
+      "properties": {
+        "neck": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "shoulder": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "chest": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "waist": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hip": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "sleeve_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "bicep": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "cuff": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "body_length": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "thigh": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "knee": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "inseam": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "rise": {
+          "$ref": "#/definitions/Centimeters"
+        },
+        "hem": {
+          "$ref": "#/definitions/Centimeters"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Medidas de una prenda por zona, en cm."
+    },
+    "GarmentMeasurementSource": {
+      "type": "string",
+      "enum": [
+        "brand_size_chart",
+        "photo_reference_object",
+        "lidar",
+        "manual",
+        "estimated"
+      ]
+    },
+    "ColorJobDispatch": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "$ref": "#/definitions/UUID"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UUID"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dueño del job; el worker lo copia en las entidades de salida. `null` en jobs de catálogo."
+        },
+        "type": {
+          "type": "string",
+          "const": "color"
+        },
+        "input": {
+          "$ref": "#/definitions/ColorJobInput"
+        },
+        "input_urls": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Url"
+          },
+          "description": "URLs firmadas de descarga (15 min), indexadas por `StoragePath`: una por cada ruta de `input` y, en el drapeado, por cada ruta de `context`."
+        },
+        "output_uploads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SignedUpload"
+          },
+          "description": "URLs firmadas donde subir los artefactos de salida."
+        },
+        "callback_url": {
+          "$ref": "#/definitions/Url",
+          "description": "Endpoint al que el worker informa del progreso y del resultado."
+        },
+        "attempt": {
+          "type": "integer",
+          "description": "Intento actual, empezando en 1.",
+          "minimum": 1
+        },
+        "contracts_version": {
+          "type": "string",
+          "description": "`CONTRACTS_VERSION` de la API que despacha."
+        }
+      },
+      "required": [
+        "job_id",
+        "user_id",
+        "type",
+        "input",
+        "input_urls",
+        "output_uploads",
+        "callback_url",
+        "attempt",
+        "contracts_version"
+      ],
+      "additionalProperties": false
     },
     "ColorJobInput": {
       "type": "object",
@@ -244,33 +965,6 @@
         "gray_card",
         "none"
       ]
-    },
-    "Url": {
-      "type": "string",
-      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
-      "format": "uri"
-    },
-    "SignedUpload": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Nombre lógico del artefacto: `glb`, `image`, `preview`."
-        },
-        "path": {
-          "$ref": "#/definitions/StoragePath"
-        },
-        "upload_url": {
-          "$ref": "#/definitions/Url"
-        }
-      },
-      "required": [
-        "name",
-        "path",
-        "upload_url"
-      ],
-      "additionalProperties": false,
-      "description": "Una URL firmada de subida que la API entrega al worker para un artefacto de salida."
     }
   },
   "$id": "https://probador.app/schemas/job_dispatch.schema.json",

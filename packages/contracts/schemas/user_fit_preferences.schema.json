@@ -1,0 +1,666 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "$ref": "#/definitions/UUID"
+    },
+    "default_fit": {
+      "$ref": "#/definitions/DesignFit",
+      "description": "Fit preferido por defecto."
+    },
+    "fit_by_category": {
+      "type": "object",
+      "properties": {
+        "tshirt": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "shirt": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "sweater": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "hoodie": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "jacket": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "coat": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "dress": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "skirt": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "pants": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "jeans": {
+          "$ref": "#/definitions/DesignFit"
+        },
+        "shorts": {
+          "$ref": "#/definitions/DesignFit"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Fit preferido por categoría: `{ \"jeans\": \"slim\" }`."
+    },
+    "ease_by_category": {
+      "type": "object",
+      "properties": {
+        "tshirt": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "shirt": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "sweater": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "hoodie": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "jacket": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "coat": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "dress": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "skirt": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "pants": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "jeans": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        },
+        "shorts": {
+          "type": "object",
+          "properties": {
+            "neck": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "shoulder": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "chest": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "waist": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hip": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "sleeve_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "bicep": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "cuff": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "body_length": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "thigh": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "knee": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "inseam": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "rise": {
+              "$ref": "#/definitions/EasePreference"
+            },
+            "hem": {
+              "$ref": "#/definitions/EasePreference"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Holgura preferida por categoría y zona; se actualiza con cada opinión."
+    },
+    "likes_oversize": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Gusto por siluetas oversize de diseño, aparte de la talla. `null` = sin dato."
+    },
+    "created_at": {
+      "$ref": "#/definitions/ISODateTime"
+    },
+    "updated_at": {
+      "$ref": "#/definitions/ISODateTime"
+    }
+  },
+  "required": [
+    "user_id",
+    "default_fit",
+    "fit_by_category",
+    "ease_by_category",
+    "likes_oversize",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "description": "Preferencias de fit del usuario (tabla `user_fit_preferences`, una fila por usuario).",
+  "definitions": {
+    "UUID": {
+      "type": "string",
+      "description": "Identificador UUID.",
+      "format": "uuid"
+    },
+    "DesignFit": {
+      "type": "string",
+      "enum": [
+        "slim",
+        "regular",
+        "relaxed",
+        "oversize"
+      ],
+      "description": "Fit con el que se diseñó la prenda (no confundir con llevar una talla mayor)."
+    },
+    "EasePreference": {
+      "type": "object",
+      "properties": {
+        "preferred_cm": {
+          "type": "number",
+          "description": "Holgura objetivo μ, en cm."
+        },
+        "tolerance_cm": {
+          "$ref": "#/definitions/Centimeters",
+          "description": "Tolerancia σ, en cm."
+        },
+        "observations": {
+          "type": "integer",
+          "description": "Opiniones que la respaldan (la prenda favorita cuenta como 3).",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "preferred_cm",
+        "tolerance_cm",
+        "observations"
+      ],
+      "additionalProperties": false,
+      "description": "Holgura preferida en una zona (`docs/research/fit.md` §6)."
+    },
+    "Centimeters": {
+      "type": "number",
+      "description": "Longitud en centímetros.",
+      "minimum": 0
+    },
+    "ISODateTime": {
+      "type": "string",
+      "description": "Fecha y hora ISO 8601 en UTC.",
+      "format": "date-time"
+    }
+  },
+  "$id": "https://probador.app/schemas/user_fit_preferences.schema.json",
+  "title": "UserFitPreferences"
+}

@@ -135,7 +135,7 @@
     },
     "Url": {
       "type": "string",
-      "description": "URL https. Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.",
+      "description": "URL absoluta. Siempre `https://` fuera del desarrollo local (en local se admite `http://localhost`). Para objetos privados de Storage es una URL firmada que caduca: no se persiste en cliente más allá de la sesión.\n\nEn `JobCallback.output` y en `jobs.output`, los campos `*_url` de artefactos de Storage NO son https: llevan un `StorageRef` (`storage://<ruta>`), que también es una URI válida. Ver la cabecera del fichero.",
       "format": "uri"
     },
     "Money": {
