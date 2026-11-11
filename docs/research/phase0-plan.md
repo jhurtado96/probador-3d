@@ -45,7 +45,7 @@ Basar la decisión en datos propios con consentimiento y usar conjuntos público
 
 | Conjunto | Uso | Licencia | Estado |
 |---|---|---|---|
-| **Voluntarios propios** (30–40 personas; frontal, perfil, ropa ajustada y holgada; altura, peso, 10 medidas de cinta ×2) | Métrica principal del avatar | Propio; consentimiento RGPD específico, fotos borradas al cerrar la fase 0 salvo consentimiento de conservación | Por crear (semana 1–3). Equilibrar sexo, IMC 18–35+, Fitzpatrick I–VI |
+| **Voluntarios propios** (60–70 personas como mínimo; frontal, perfil, ropa ajustada y holgada; altura, peso, 10 medidas de cinta ×2) | Métrica principal del avatar | Propio; consentimiento RGPD específico, fotos borradas al cerrar la fase 0 salvo consentimiento de conservación | Por crear (semana 1–3). Por estrato (M8): ≥ 15 por tramo Monk 1–3, 4–6 y 7–10; ≥ 15 por tramo de IMC (< 25, 25–30, ≥ 30); ≥ 20 por sexo; ≥ 5 personas que no pueden hacer la A-pose de pie. Escala Monk, la misma que la colorimetría (`avatar.md` §6) |
 | **Cuerpos sintéticos** (500 muestras MHR/Anny renderizadas con medidas conocidas) | Prueba de ida y vuelta del ajuste y la medición | MHR Apache 2.0, Anny Apache 2.0/CC0 (verificado) | Por generar |
 | BodyM (Amazon; 2.505 sujetos, siluetas + 14 medidas) | Evaluación interna a escala del ajuste por silueta | CC BY-NC 4.0 (visto en buscador): **solo evaluación, nunca entrenamiento**; confirmar con legal en P0 | Público en AWS Open Data |
 | ANSUR II (tablas de medidas) | Prior y comprobación de plausibilidad | Datos públicos del ejército de EE. UU.; términos por confirmar en P0 | Público |
@@ -63,7 +63,10 @@ Decidir con los umbrales de esta tabla; "ámbar" obliga a un plan de mitigación
 | Avatar | MAE de pecho, cintura y cadera (voluntarios, frontal + perfil, ropa ajustada) | < 3,0 cm | 3,0–4,5 cm | > 4,5 cm |
 | Avatar | Igual con una sola foto frontal | < 4,0 cm | 4,0–6,0 cm | > 6,0 cm |
 | Avatar | MAE de longitudes (entrepierna, brazo, hombros) | < 2,0 cm | 2,0–3,0 cm | > 3,0 cm |
-| Avatar | Diferencia de MAE entre subgrupos (sexo, IMC, tono de piel) | < 1,0 cm | 1,0–2,0 cm | > 2,0 cm |
+| Avatar | Diferencia de MAE entre subgrupos (sexo, IMC, tono de piel Monk) | < 1,0 cm | 1,0–2,0 cm | > 2,0 cm |
+| Avatar | MAE del peor tramo de cada eje (Monk, IMC, sexo) frente al MAE global | ≤ 1,5 × | 1,5–2,0 × | > 2,0 × |
+| Avatar | Captura alternativa (sentada o asistida): MAE de pecho, cintura y cadera | < 4,0 cm | 4,0–6,0 cm | > 6,0 cm |
+| Color | IoU de piel y pelo del segmentador en el peor tramo Monk | ≥ 0,75 | 0,70–0,75 | < 0,70 |
 | Avatar | Repetibilidad (3 fotos de la misma persona), desviación típica de perímetros | < 1,0 cm | 1,0–2,0 cm | > 2,0 cm |
 | Avatar | Latencia p95 en L4, sin arranque en frío | < 20 s | 20–40 s | > 40 s |
 | Avatar | Tasa de fallo en fotos que pasan la validación de captura | < 5 % | 5–10 % | > 10 % |
@@ -80,7 +83,7 @@ Decidir con los umbrales de esta tabla; "ámbar" obliga a un plan de mitigación
 
 ## 5. Regla de decisión
 
-Decidir "go" si no hay ningún no-go y el avatar está en go por alguna de sus tres vías; en otro caso aplicar la salida indicada.
+Decidir "go" si no hay ningún no-go y el avatar está en go por alguna de sus tres vías; en otro caso aplicar la salida indicada. **Criterio por grupo (M8)**: ningún módulo sale si el peor tramo de tono de piel o de IMC está en no-go, aunque la media global esté en go; un tramo en ámbar obliga a avisar en la app de la menor precisión para ese caso y a un plan de datos para corregirlo.
 
 - **Go**: ningún no-go y medidas de avatar < 3 cm con (a) pipeline propio de una foto, (b) pipeline propio con frontal + perfil, o (c) API comercial con contrato viable.
 - **Go con alcance reducido**: avatar en ámbar → el MVP sale con frontal + perfil obligatorio y corrección manual de 3–4 medidas, y la recomendación de talla se muestra como orientativa.

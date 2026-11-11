@@ -267,7 +267,7 @@ interface ColorProfile {
 - Techo humano: los asesores pueden discrepar entre sí más del 25 %.
 - Filtros de belleza y maquillaje: no se detectan bien; dependen de la instrucción al usuario.
 - Pelo teñido, canas, velo, calvicie: frecuentes; el clasificador debe funcionar solo con piel y ojos.
-- Segmentador: peor en algunos tonos (71,9 de IoU en el peor grupo); medir en nuestro dataset.
+- Segmentador: peor en algunos tonos (71,9 de IoU en el peor grupo); medir en nuestro dataset. Umbral que bloquea el lanzamiento: IoU de piel y pelo ≥ 0,75 en el peor tramo Monk (`phase0-plan.md` §4; revisión de la fase 0, M8). Se usa la escala Monk también en la validación del avatar para poder cruzar resultados.
 
 ## 9. Fuentes
 

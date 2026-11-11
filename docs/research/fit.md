@@ -21,7 +21,7 @@ holgura_pct_z = holgura_z / cuerpo_z
 ```
 
 - `prenda_z`: contorno (ancho en plano × 2) o longitud.
-- `cuerpo_z`: medida del avatar en la misma zona (`Avatar.measurements`, sea cual sea el modelo corporal).
+- `cuerpo_z`: medida del avatar en la misma zona (`Avatar.measurements` con `measurements_override` aplicado, sea cual sea el modelo corporal). La correspondencia zona → medida es única y está en el contrato (`FIT_ZONE_BODY_MEASUREMENT`: `shoulder` → `shoulder_width_cm`, `sleeve_length` → `arm_length_cm`, `cuff` → `wrist_cm`, `body_length` → `torso_length_cm`, `knee` → `knee_cm`, `rise` → `rise_cm`…; `hem` no tiene medida corporal). Si falta la medida corporal de una zona, la zona se omite; si falta en una zona ancla, `size_offset` es `null` cuando no queda ninguna ancla medible y la confianza no pasa de 0,5 (`FIT_MAX_CONFIDENCE_WITHOUT_ANCHOR`; revisión de la fase 0, M7).
 - `elasticidad`: 0 en tejido plano, 0,05–0,15 en punto, hasta 0,3 con elastano; k_z = 1 en contornos, 0 en largos.
 - Incertidumbre: σ_holgura = √(σ_cuerpo² + σ_prenda²); cada etiqueta lleva la probabilidad de cada nivel.
 

@@ -76,13 +76,25 @@ Medir siempre en pose A canónica y con definiciones ISO 8559-1, mediante cortes
 
 Validar con un conjunto propio de voluntarios medidos con cinta, que es lo único comercialmente limpio y representativo, y usar los conjuntos públicos solo como evaluación interna.
 
-- **Conjunto propio (imprescindible)**: 30–40 voluntarios con consentimiento explícito, equilibrado en sexo, tallas (IMC 18–35+) y tonos de piel (Fitzpatrick I–VI). Por persona: foto frontal y de perfil con ropa ajustada, foto frontal con ropa holgada, altura, peso y 10 medidas de cinta tomadas dos veces por la misma persona según ISO 8559-1 (la diferencia entre repeticiones da el ruido de la referencia, normalmente 0,5–1,5 cm en perímetros [M]).
+- **Conjunto propio (imprescindible)**: voluntarios con consentimiento explícito, dimensionado **por estrato** (revisión de la fase 0, M8). Con 30–40 personas repartidas en sexo × 3 tramos de IMC × 6 tonos quedan una o dos por celda y no se puede afirmar nada por grupo; por eso cada eje se dimensiona y se analiza por separado:
+  - **Tono de piel con la escala Monk** (MST 1–10, la misma que la colorimetría, para poder cruzar resultados; no Fitzpatrick): al menos 15 personas en cada tramo MST 1–3, 4–6 y 7–10.
+  - **IMC**: al menos 15 personas en cada tramo (< 25, 25–30, ≥ 30, con representación de ≥ 35, donde los estimadores fallan más).
+  - **Sexo**: al menos 20 por sexo.
+  - Con solapamiento entre ejes salen **unas 60–70 personas** como mínimo (no 30–40). Cada eje se analiza por separado (MAE e intervalo de confianza por tramo); el cruce completo no se exige.
+  - **Diversidad funcional**: al menos 5 personas que no pueden mantener la A-pose de pie (usuarias de silla de ruedas, diferencia de longitud o ausencia de un miembro) para validar los caminos de captura alternativos (abajo).
+
+  Por persona: foto frontal y de perfil con ropa ajustada, foto frontal con ropa holgada, altura, peso y 10 medidas de cinta tomadas dos veces por la misma persona según ISO 8559-1 (la diferencia entre repeticiones da el ruido de la referencia, normalmente 0,5–1,5 cm en perímetros [M]).
 - **BodyM** (Amazon): 2.505 sujetos reales, 8.978 siluetas frontal y lateral con altura, peso y 14 medidas; licencia **CC BY-NC 4.0** [S]. Solo evaluación interna y nunca entrenamiento; que legal confirme que evaluar internamente cabe en "no comercial".
 - **Sintético**: muestrear cuerpos MHR/Anny con medidas conocidas, renderizarlos y pasar el pipeline completo. Sin problema de licencia; detecta errores del optimizador y de la medición, no la brecha con fotos reales.
 - **ANSUR II**: tablas de medidas públicas (sin imágenes ni escáneres públicos) [S]; sirve como prior y para comprobar plausibilidad.
 - HBW y SSP-3D: solo investigación (MPI) [M]; no usar.
 
-Métricas: error absoluto medio (MAE) y percentil 90 por medida; desglose por sexo, IMC, tono de piel y tipo de ropa; repetibilidad (misma persona, 3 fotos). Umbrales en `phase0-plan.md`.
+Métricas: error absoluto medio (MAE) y percentil 90 por medida; desglose por sexo, IMC, tono de piel (Monk) y tipo de ropa; repetibilidad (misma persona, 3 fotos). Umbrales en `phase0-plan.md`, incluido el criterio de lanzamiento por grupo: **MAE del peor tramo ≤ 1,5 × MAE global** en cada eje.
+
+**Captura accesible (M8).** La foto de pie en A-pose excluye a quien no puede mantenerla. Caminos alternativos que la fase 0 debe probar con el grupo de diversidad funcional:
+- **Pose sentada**: foto frontal sentado con la altura declarada; el ajuste de forma fija la pose sentada como pose de la foto y mide en la pose canónica. Las longitudes de pierna (entrepierna, tiro) se marcan con incertidumbre alta o se piden a mano.
+- **Foto asistida**: otra persona hace la foto con guía por voz y silueta, sin exigir temporizador ni distancia fija.
+- **Medidas manuales parciales**: el avatar se puede guardar con las medidas que la persona tenga; las de miembros (`arm_length_cm`, `inseam_cm`) deberían ser opcionales y el fit omite las zonas sin medida (contrato: `FIT_ZONE_BODY_MEASUREMENT`). Hoy `avatars.measurements` exige siete medidas: cambio pendiente de decisión de producto (revisión, M8).
 
 Expectativa realista (estimación propia, a confirmar en P1): longitudes < 2 cm al conocer la altura; perímetros 3–5 cm con una sola foto vestida y 2–3 cm con frontal + perfil y ropa ajustada. El objetivo de 3 cm probablemente exige la segunda foto o la corrección manual.
 
@@ -111,7 +123,7 @@ Condiciones para activar el plan B: contrato de encargo de tratamiento (RGPD), p
 
 - La SAM License no es una licencia abierta estándar: Meta puede modificarla y exige indemnización [V]; revisión legal antes del MVP.
 - Licencia del checkpoint Multi-HMR + Anny sin verificar (host bloqueado).
-- Sesgo: validar por tono de piel e IMC; los estimadores fallan más en cuerpos grandes y ropa holgada [M].
+- Sesgo: validar por tono de piel (Monk) e IMC con el tamaño de muestra por estrato del apartado 6; los estimadores fallan más en cuerpos grandes y ropa holgada [M].
 - Hosts no accesibles desde esta sesión, que impidieron verificar fuentes: smpl-x.is.tue.mpg.de, arxiv.org, huggingface.co, download.europe.naverlabs.com, dev.to, www.mpg.de, www.prismlabs.tech.
 
 ## Fuentes

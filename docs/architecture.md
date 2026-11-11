@@ -1,6 +1,6 @@
 # Arquitectura — Probador virtual 3D
 
-Estado: propuesta para la fase 0, reconciliada con la investigación y con la primera tanda de implementación · 2026-11-11 · Contratos: `packages/contracts` (v0.3.0) · Decisiones que cambian lo escrito al principio: [§7 Registro de decisiones](#7-registro-de-decisiones)
+Estado: propuesta para la fase 0, reconciliada con la investigación y con la primera tanda de implementación · 2026-11-11 · Contratos: `packages/contracts` (v0.4.0) · Decisiones que cambian lo escrito al principio: [§7 Registro de decisiones](#7-registro-de-decisiones)
 
 **Recomendación en una frase:** una sola app Expo (expo-router) para web, Android e iOS, con la escena 3D escrita una vez en React Three Fiber y renderizada con WebGL en web y con `expo-gl` en nativo; Supabase en la UE como backend (Auth, Postgres con RLS, Storage, Edge Functions como API) y workers GPU en Python sobre Modal en región UE; todo el 3D en un único perfil de GLB que no necesita descodificadores WASM.
 
@@ -148,12 +148,13 @@ Funciones (rutas bajo `/functions/v1/`; así quedaron implementadas en `supabase
 |---|---|
 | `POST create-job` | Valida `CreateJobRequest`, comprueba consentimiento y cuota, inserta el job y responde `CreateJobResponse`: el `Job` y una URL firmada de subida por cada foto que falte. No hay `/uploads` aparte |
 | `POST create-job/uploaded` | La app avisa de que subió las fotos y el job se despacha en el acto (si no avisa, `pg_cron` lo hace en menos de un minuto) |
+| `POST job-dispatch` | El contenedor del worker pide aquí el `JobDispatch` completo con un `JobDispatchFetch` firmado; se entrega una vez por intento (§7, D11) |
 | `POST job-callback` | Recibe `JobCallback` del worker (firma HMAC con marca de tiempo), borra las entradas y persiste resultados |
 | `POST maintenance` | La llama `pg_cron`: despacho, borrado de fotos, barrido de 60 min y limpieza de ficheros huérfanos |
 | `DELETE delete-account` | Borrado total |
 | `GET export-data` | Exportación de datos (arts. 15 y 20 RGPD): `DataExport` en JSON con URLs firmadas de 1 h; 5 por usuario y día (§7, D7) |
 
-Los consentimientos se registran y se retiran escribiendo en la tabla `consents` con RLS, sin función. Los errores de todas las funciones tienen la forma `ApiErrorBody` del contrato: `{ error: { code, message, details? } }`.
+Los consentimientos se registran y se retiran escribiendo en la tabla `consents` con RLS, sin función; la app solo envía el tratamiento, y la fecha y la versión vigente del texto (`consent_texts`) las pone el servidor (§7, D13). Los errores de todas las funciones tienen la forma `ApiErrorBody` del contrato: `{ error: { code, message, details? } }`.
 
 **Autenticación entre API y workers.** El despacho (API → worker) y el callback (worker → API) se firman igual, como especifica `packages/contracts`: cabeceras `x-probador-timestamp` (segundos Unix) y `x-probador-signature: sha256=<hex>`, con HMAC-SHA256 sobre `"<timestamp>." + cuerpo exacto`. Quien recibe rechaza firmas incorrectas y marcas de tiempo con más de 300 s de desfase, lo que acota los reenvíos; dentro de esa ventana ambas peticiones son idempotentes por `job_id` e `attempt`. Hay un secreto por sentido (`PROBADOR_DISPATCH_SECRET`, `PROBADOR_CALLBACK_SECRET`), con el mismo nombre en los dos lados, y un vector de prueba compartido que comprueban los tests de Node, Python y Deno.
 
@@ -161,7 +162,7 @@ Los consentimientos se registran y se retiran escribiendo en la tabla `consents`
 
 **Decisión: la tabla `jobs` de Postgres es la fuente de verdad y la cola; la Edge Function despacha cada job por HTTP a Modal, el worker responde con un callback firmado, y `pg_cron` reintenta o da por fallidos los que se quedan colgados.**
 
-- **Despacho**: `create-job` inserta la fila (`queued`) y, cuando las fotos están subidas, llama al endpoint de Modal con un `JobDispatch` firmado: el dueño (`user_id`), la entrada, URLs firmadas de descarga (15 minutos) y de subida (2 horas, límite fijo de Supabase; ver §7, D8), la URL de callback y, en el drapeado, el contexto que el simulador necesita.
+- **Despacho** (§7, D11): `create-job` inserta la fila (`queued`) y, cuando las fotos están subidas, llama al endpoint de Modal con un `JobDispatchNotice` firmado que solo lleva `job_id`, tipo, intento y la URL de `job-dispatch`. Ya en el contenedor, el worker pide a `job-dispatch` el `JobDispatch` completo: el dueño (`user_id`), la entrada, URLs firmadas de descarga (15 minutos) y de subida (2 horas, límite fijo de Supabase; ver §7, D8 y D14), la URL de callback y, en el drapeado, el contexto que el simulador necesita.
 - **Mínimo privilegio**: el worker no tiene la clave de servicio de Supabase ni acceso a la base de datos. Solo puede leer las entradas de su job y escribir sus salidas.
 - **Progreso**: el worker envía callbacks `running` con `progress` y `stage`; la app los recibe por Supabase Realtime sobre su fila de `jobs`, con sondeo cada pocos segundos como respaldo.
 - **Reintentos**: `pg_cron` cada minuto vuelve a despachar los `queued` sin arrancar y marca `failed` (`timeout`) los `running` que superan el plazo de su tipo. Máximo 3 intentos; el callback lleva `attempt` para descartar respuestas tardías de intentos anteriores.
@@ -250,7 +251,7 @@ Cada borrado deja constancia en `jobs.input_deleted_at`, que escribe solo la API
 
 ### Región, cifrado y accesos
 
-- **Región UE**: proyecto Supabase en una región de la UE (Fráncfort o Irlanda) y workers GPU fijados a región UE. Ningún proveedor que procese fotos fuera de la UE. Contrato de encargo de tratamiento con cada proveedor y lista de subencargados.
+- **Región UE**: proyecto Supabase en una región de la UE (Fráncfort o Irlanda) y workers GPU fijados a región UE. Ningún proveedor que procese fotos fuera de la UE. Contrato de encargo de tratamiento con cada proveedor y lista de subencargados. Fijar la región de Modal solo decide dónde corre el contenedor: por eso a su cola solo llegan identificadores y no se le devuelve ningún resultado (§7, D11).
 - **Cifrado**: TLS en tránsito; cifrado en reposo del proveedor para base de datos y Storage. La sesión se guarda en el almacén seguro del sistema en nativo.
 - **Acceso**: RLS en todas las tablas y buckets; URLs firmadas de vida corta; los workers no tienen credenciales de la base de datos; la clave de servicio solo existe en las Edge Functions.
 - **Registros**: los logs llevan identificadores de job, nunca imágenes, medidas ni URLs firmadas.
@@ -265,7 +266,7 @@ Cada borrado deja constancia en `jobs.input_deleted_at`, que escribe solo la API
 | Personalización y recomendaciones de tiendas | Al activar recomendaciones | La app funciona como armario |
 | Analítica | En el primer arranque | Sin analítica |
 
-Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `create-job` rechaza el job (`consent_missing`) si no hay uno vigente. Retirar un consentimiento borra los datos derivados de él. Se exige edad mínima y no se procesan fotos de menores.
+Cada uno se guarda en `consents` con versión del texto, fecha y retirada, que fija el servidor (§7, D13); `create-job` rechaza el job (`consent_missing`) si no hay uno vigente. Retirar un consentimiento borra los datos derivados de él, también lo que quedaba en `jobs` (§7, D9), y en colorimetría el perfil entero aunque se corrigiera a mano (D10). Las fotos de prenda no tienen consentimiento propio (D12). Se exige edad mínima y no se procesan fotos de menores.
 
 ### Derechos del usuario
 
@@ -332,7 +333,7 @@ Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `crea
 
 ## 7. Registro de decisiones
 
-**Decisión: lo que sigue prevalece sobre cualquier frase anterior de este documento, de los README o de la skill que diga otra cosa.** Cada entrada lleva fecha, decisión, motivo y alternativa descartada. Las cuatro primeras salen de la investigación de la fase 0 (`docs/research/`); D5 es la reconciliación entre contratos, backend y workers; D6 a D8 son decisiones legales y de producto tomadas por el usuario (D6 y D7, implementadas).
+**Decisión: lo que sigue prevalece sobre cualquier frase anterior de este documento, de los README o de la skill que diga otra cosa.** Cada entrada lleva fecha, decisión, motivo y alternativa descartada. Las cuatro primeras salen de la investigación de la fase 0 (`docs/research/`); D5 es la reconciliación entre contratos, backend y workers; D6 a D8 son decisiones legales y de producto tomadas por el usuario (D6 y D7, implementadas); D9 a D14 corrigen los hallazgos de la revisión crítica (`docs/reviews/2026-11-11-revision-fase0.md`) aplicando, por indicación del usuario, la opción más protectora según el RGPD y la LOPDGDD.
 
 ### D1 · Avatar independiente de la topología del modelo corporal · 2026-11-11
 
@@ -377,10 +378,50 @@ Cada uno se guarda en `consents` con versión del texto, fecha y retirada; `crea
 - **Decisión:** un endpoint devuelve en JSON legible por máquina todos los datos del usuario (perfil, consentimientos, avatar con medidas, perfil de color, prendas con medidas, fit y outfits) y URLs firmadas temporales a sus GLB. La respuesta es inmediata o, como máximo, en menos de un mes. No incluye las fotos originales porque ya no existen.
 - **Motivo:** derechos de acceso y de portabilidad (arts. 15 y 20 del RGPD).
 - **Alternativa descartada:** atender las solicitudes a mano.
-- **Estado:** implementado: Edge Function `GET export-data`, tipo `DataExport` en `packages/contracts` (v0.3.0), respuesta validada contra su JSON Schema, URLs firmadas de 1 hora (GLB, patrones, recortes y miniaturas), jobs sin salida ni rutas internas y cuota de 5 exportaciones por usuario y día. La respuesta es inmediata.
+- **Estado:** implementado: Edge Function `GET export-data`, tipo `DataExport` en `packages/contracts` (v0.4.0), respuesta validada contra su JSON Schema, URLs firmadas de 1 hora (GLB, patrones, recortes y miniaturas), jobs con lo que queda de ellos (entrada sin rutas y salida, que son ids; D9), embeddings de las prendas y cuota de 5 exportaciones por usuario y día. La respuesta es inmediata.
 
 ### D8 · URLs firmadas de subida de 2 horas · 2026-11-11 · decisión del usuario
 
 - **Decisión:** se aceptan las 2 horas de caducidad que Supabase fija para las URLs firmadas de subida, en lugar de los 15 minutos previstos. Las de descarga siguen siendo de 15 minutos.
 - **Motivo:** el plazo no es configurable en Supabase y el riesgo queda acotado por cuatro medidas: la ruta es única por job e intento; cada ruta admite una sola subida, sin sobrescribir; el callback solo acepta las rutas emitidas para el intento en curso; y en `raw-uploads` el job caduca y el barrido borra todo a los 60 minutos.
 - **Alternativa descartada:** un proxy propio de subida con caducidad de 15 minutos, que añadiría un servicio por el que pasarían las fotos.
+- **Corrección (D14):** «cada ruta admite una sola subida» solo era cierto mientras el objeto existía; borrada la foto, la URL volvía a servir. Desde D14 la URL deja de servir en cuanto el job no la espera.
+
+### D9 · `jobs` sin copias de datos personales · 2026-11-11 · revisión A1
+
+- **Decisión:** al terminar un job (bien, mal o cancelado) un trigger reduce `jobs.input` a sus identificadores (`consent_id`, `avatar_id`, `garment_id`) y `jobs.output` a referencias a lo creado (`avatar_id`, `color_profile_id`, `garment_id`, `drape_cache_id`, `fit_result_id`, `cache_hit`; contrato `JobResult`). Altura, peso, género, rutas de fotos, medidas, forma, LAB e ITA solo existen mientras el job está en cola o en curso. Retirar un consentimiento y borrar un avatar, un perfil de color o una prenda cancelan los jobs en curso que dependen de ello y quitan su id de los terminados. Los jobs terminados se purgan a los 30 días (`JOB_RETENTION_DAYS`), nunca antes de borrar sus fotos. `export-data` incluye lo que queda.
+- **Motivo:** limitación del plazo de conservación y minimización (art. 5.1.c y e RGPD) y efecto de la retirada (arts. 7.3 y 17.1.b): las copias en `jobs` sobrevivían a la retirada y al borrado del avatar. 30 días es el mínimo de la horquilla propuesta (30–90) y basta para soporte y cuotas.
+- **Alternativa descartada:** borrar las filas de `jobs` al instante (se perdería la constancia del borrado de las fotos, `input_deleted_at`, y el borrado de fotos de jobs cancelados que depende de `job_runs`); vaciar solo `output`.
+
+### D10 · Retirar la colorimetría borra todo el perfil de color · 2026-11-11 · revisión A2
+
+- **Decisión:** retirar `color_analysis` borra todos los perfiles de color del usuario, también los que corrigió a mano (`user_overridden`). Para tener estación sin consentimiento, el usuario la elige a mano desde cero (perfil manual sin datos medidos; pendiente de producto, porque hoy `color_profiles` exige el LAB medido).
+- **Motivo:** la base legal del perfil es el consentimiento. Corregir la estación no convierte en datos aportados por el usuario el LAB de piel, pelo e iris, el ITA ni las puntuaciones, que salen del selfie; y la estación elegida se apoyaba en ellos. Sin consentimiento no se conserva nada derivado.
+- **Alternativa descartada:** conservar solo los campos elegidos y anular los medidos (exige columnas nulables y deja un perfil mixto cuyo origen es difícil de explicar).
+
+### D11 · Ningún dato personal en la cola ni en los resultados de Modal · 2026-11-11 · revisión A3
+
+- **Decisión:** se aplican las dos medidas a la vez. (1) La API envía a Modal un `JobDispatchNotice` con solo `job_id`, tipo, intento y la URL de `job-dispatch`; es lo único que Modal guarda como entrada de la llamada. Ya en el contenedor, el worker pide el `JobDispatch` completo a `job-dispatch` con una petición firmada con `PROBADOR_CALLBACK_SECRET`; la API lo entrega una sola vez por intento, solo dentro de su plazo, y con `Cache-Control: no-store`. (2) La función GPU devuelve `None`: Modal no guarda ningún resultado, que viaja solo por el callback. El timeout de Modal es el plazo de la API (B4).
+- **Motivo:** el parámetro `region=` de Modal fija dónde corre el contenedor, no dónde guarda las entradas, los resultados ni los logs. Con este diseño, aunque el plano de control estuviera fuera de la UE, por él solo pasan identificadores aleatorios; los datos de salud y biométricos en sentido amplio viajan por HTTPS de la API (UE) al contenedor (UE) y no se retienen en el proveedor. Además, un aviso reenviado ya no puede volver a descargar la foto.
+- **Alternativa descartada:** solo devolver `None` (la entrada seguiría en la cola con URLs firmadas a la foto y datos corporales); una cola propia en otro proveedor (más infraestructura sin ganar protección).
+- **Pendiente del usuario (bloqueante para el lanzamiento y punto de la EIPD):** firmar el contrato de encargo de tratamiento (art. 28 RGPD) con Modal y obtener por escrito la ubicación y la retención de su plano de control, la cola de entradas, los resultados y los logs, y su lista de subencargados. Si no garantiza la UE, pasar a RunPod UE (el contrato de despacho es el mismo).
+
+### D12 · Fotos de prenda: sin consentimiento propio, sin personas · 2026-11-11 · revisión M5
+
+- **Decisión:** los jobs de prenda no exigen consentimiento. A cambio: la captura pide la prenda extendida o en percha y avisa de que no salga nadie; el worker real detecta personas (piel o cara) antes de segmentar y, si aparece una, falla con `person_detected` sin subir recorte (contrato v0.4.0); la foto se borra como siempre; y la información al usuario y la EIPD declaran el caso. La prenda puesta (nivel 2) tendrá su propio consentimiento.
+- **Motivo:** procesar las fotos del armario es necesario para el servicio que el usuario pide (art. 6.1.b RGPD), y un consentimiento que condiciona la función principal no sería libre (art. 7.4 y Directrices 05/2020 del CEPD); su retirada obligaría además a borrar el armario. La protección efectiva es no procesar a la persona: se rechaza la foto en vez de conservar un recorte con piel o cara.
+- **Alternativa descartada:** un consentimiento `garment_photos` (base jurídica débil para la función principal y efecto desproporcionado de la retirada).
+- **Estado:** contrato y documentación hechos; el control `person_detected` es requisito para activar el pipeline real de prendas, que aún no existe (`services/workers/README.md`). Que el abogado confirme la base jurídica.
+
+### D13 · La prueba del consentimiento la fija el servidor · 2026-11-11 · revisión M1
+
+- **Decisión:** `consent_texts` publica cada versión del texto legal (texto íntegro y SHA-256), solo por inserción. La app solo inserta el tratamiento (y, si quiere, la versión que mostró, que tiene que ser la vigente); fecha de concesión, de creación y de retirada las pone el servidor, y una fila de `consents` no se puede reescribir. El archivo D6 guarda además el HMAC del email normalizado, y `consent_archive_lookup` (solo `service_role`) busca por email o por `user_id` sin sacar el secreto de Vault. `delete-account` ya no registra el `user_id` (B7).
+- **Motivo:** el art. 7.1 RGPD exige poder demostrar el consentimiento: una fecha y un texto escritos por el cliente no lo demuestran, y un seudónimo del `user_id` que nadie conserva no permite encontrar el registro de quien reclama.
+- **Alternativa descartada:** una Edge Function `POST /consents` (el mismo control se consigue con privilegios por columna y triggers, sin otro punto de entrada); guardar el email en claro en el archivo.
+- **Pendiente:** los textos sembrados son borradores marcados como tales; el usuario y el abogado tienen que redactar los definitivos (se publican con una migración nueva) y confirmar que el HMAC del email es un identificador aceptable para el archivo bloqueado.
+
+### D14 · Las subidas pendientes se revocan en la base de datos · 2026-11-11 · revisión M2 y B5
+
+- **Decisión:** un trigger en `storage.objects` solo admite una subida si un job activo la espera: en `raw-uploads`, una foto de entrada de un job en cola de ese usuario; en `assets`, una salida autorizada del intento en curso, las miniaturas de `<uid>/outfits/` y `catalog/`. Darse de baja (que ahora cancela antes los jobs), retirar un consentimiento, borrar el avatar o la prenda y que el job termine o caduque invalidan así cualquier URL de subida pendiente, de la app o del worker. El GC de `assets` pasa de 1 día a 10 minutos, corre cada 10 minutos y también en cuanto se borra un avatar o una prenda.
+- **Motivo:** las URLs firmadas de subida de Supabase duran 2 h y no se pueden revocar; sin esto aparecían ficheros después de la baja o de la retirada y duraban hasta ~48 h, en contra del borrado total. Storage comprueba el trigger tanto al firmar la URL como al subir, así que un rechazo no deja fichero.
+- **Alternativa descartada:** guardar unas horas el `user_id` de las cuentas borradas para barrer su carpeta (conservación adicional y una ventana en la que los ficheros existen).

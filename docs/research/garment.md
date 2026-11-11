@@ -25,6 +25,7 @@ Usar SAM 2 (código y pesos Apache 2.0 [V]) con una caja o punto inicial dado po
 
 - BiRefNet: código MIT, pero la licencia de los pesos no está declarada y se entrena con DIS5K, cuyos términos no figuran [V]. Su derivado RMBG-2.0 (BRIA) es solo no comercial [V]. Sirve para comparar calidad de bordes en P2, no para producción sin aclararlo.
 - Casos: prenda extendida sobre fondo liso (caso guiado en la app), prenda en percha, prenda puesta. La fase 0 cubre solo extendida y en percha; la prenda puesta se deja para el nivel 2.
+- **Sin personas (revisión de la fase 0, M5; `docs/architecture.md` §7, D12)**: la captura pide la prenda extendida o en percha y avisa de que no salga nadie. Antes de segmentar, el worker comprueba con MediaPipe (detección de cara y de piel/persona) que no aparece ninguna persona; si aparece, el job falla con `person_detected`, no se sube ningún recorte y la foto se borra como siempre. Es requisito para activar el pipeline real. La prenda puesta (nivel 2) exigirá un consentimiento propio y su apartado en la EIPD.
 - Salida: máscara alfa, recorte y contorno. La app guía la captura: prenda extendida, fondo contrastado, vista cenital.
 
 ### 2.2 Clasificación de atributos
