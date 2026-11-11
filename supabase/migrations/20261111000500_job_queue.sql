@@ -373,7 +373,6 @@ declare
   v_requeued integer := 0;
   v_timed_out integer := 0;
   v_abandoned integer := 0;
-  v_failed_garments uuid[];
 begin
   -- 1. Intentos que superaron su plazo y aún tienen reintentos: vuelven a la cola.
   with stale as (

@@ -4,7 +4,8 @@
     "ajv": "npm:ajv@8.20.0",
     "ajv-formats": "npm:ajv-formats@3.0.1",
     "@probador/contracts": "../../packages/contracts/src/index.ts",
-    "@probador/contracts/schemas/": "../../packages/contracts/schemas/"
+    "@probador/contracts/schemas/": "../../packages/contracts/schemas/",
+    "postgres": "npm:postgres@3.4.7"
   },
   "compilerOptions": {
     "strict": true
