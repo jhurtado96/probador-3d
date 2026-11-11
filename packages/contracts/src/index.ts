@@ -1364,6 +1364,108 @@ export interface ApiErrorBody {
 }
 
 // ---------------------------------------------------------------------------
+// Derechos del usuario: exportación de datos (arts. 15 y 20 RGPD)
+// ---------------------------------------------------------------------------
+
+/** Valor fijo de `DataExport.format`: identifica el fichero exportado. */
+export const DATA_EXPORT_FORMAT = "probador.data_export";
+
+/** Validez de las URLs firmadas de una exportación, en segundos. */
+export const DATA_EXPORT_SIGNED_URL_TTL_SECONDS = 3600;
+
+/** Cuenta de Auth del usuario (lo que Auth guarda de él y la app conoce). */
+export interface DataExportAccount {
+  id: UUID;
+  email: string | null;
+  created_at: ISODateTime;
+}
+
+/**
+ * Avatar exportado. `glb_url` es una URL firmada temporal; `null` solo si el
+ * fichero ya no existe en Storage.
+ */
+export interface DataExportAvatar extends Omit<Avatar, "glb_url"> {
+  glb_url: Url | null;
+}
+
+/** Prenda procesada exportada: las URLs firmadas son `null` si el fichero no existe. */
+export interface DataExportReadyGarment extends Omit<ReadyGarment, "image_url"> {
+  image_url: Url | null;
+}
+
+/** Prenda exportada, con sus medidas por talla y URLs firmadas a GLB, patrón y recorte. */
+export type DataExportGarment = PendingGarment | DataExportReadyGarment;
+
+/** Entrada de la caché de drapeado exportada; `glb_url` firmada o `null` si no existe. */
+export interface DataExportDrapeCache extends Omit<DrapeCache, "glb_url"> {
+  glb_url: Url | null;
+}
+
+/**
+ * Entrada de un job sin rutas internas: las fotos (`photo_path`, `selfie_path`,
+ * `image_paths`) ya no existen y su ruta no es un dato del usuario.
+ */
+export type DataExportJobInput =
+  | Omit<AvatarJobInput, "photo_path">
+  | Omit<ColorJobInput, "selfie_path">
+  | Omit<GarmentJobInput, "image_paths">
+  | DrapeJobInput;
+
+/**
+ * Job exportado. No lleva `output` (sus resultados ya están en `avatars`,
+ * `color_profiles`, `garments`, `fit_results` y `drape_cache`, con URLs
+ * firmadas) ni rutas de Storage.
+ */
+export interface DataExportJob {
+  id: UUID;
+  type: JobType;
+  status: JobStatus;
+  progress: UnitInterval;
+  stage: string | null;
+  input: DataExportJobInput;
+  error: JobError | null;
+  /**
+   * @minimum 0
+   * @asType integer
+   */
+  attempts: number;
+  worker_version: string | null;
+  fake: boolean;
+  input_deleted_at: ISODateTime | null;
+  created_at: ISODateTime;
+  started_at: ISODateTime | null;
+  finished_at: ISODateTime | null;
+}
+
+/**
+ * Respuesta 200 de `GET /functions/v1/export-data`: todos los datos del usuario
+ * en JSON legible por máquina (derechos de acceso y portabilidad, arts. 15 y
+ * 20 RGPD). Las URLs firmadas caducan en `signed_urls_expire_at`.
+ */
+export interface DataExport {
+  format: typeof DATA_EXPORT_FORMAT;
+  /** `CONTRACTS_VERSION` de la API que generó la exportación. */
+  contracts_version: string;
+  exported_at: ISODateTime;
+  signed_urls_expire_at: ISODateTime;
+  /** Siempre `false`: las fotos de cuerpo, selfies y fotos de prendas se borran al procesarlas. */
+  original_photos_retained: false;
+  /** Notas legibles para la persona (en español). */
+  notes: string[];
+  account: DataExportAccount;
+  profile: Profile | null;
+  consents: Consent[];
+  avatars: DataExportAvatar[];
+  color_profiles: ColorProfile[];
+  garments: DataExportGarment[];
+  fit_results: FitResult[];
+  user_fit_preferences: UserFitPreferences | null;
+  outfits: Outfit[];
+  drape_cache: DataExportDrapeCache[];
+  jobs: DataExportJob[];
+}
+
+// ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
 
@@ -1379,4 +1481,4 @@ export const RANKING_WEIGHTS = {
 } as const;
 
 /** Versión del contrato. Sube el mayor cuando un cambio rompe a los workers. */
-export const CONTRACTS_VERSION = "0.2.0";
+export const CONTRACTS_VERSION = "0.3.0";

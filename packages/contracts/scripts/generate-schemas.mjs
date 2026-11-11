@@ -29,6 +29,7 @@ const TYPES = [
   "CreateJobRequest",
   "JobDispatch",
   "JobCallback",
+  "DataExport",
 ];
 
 const generator = createGenerator({

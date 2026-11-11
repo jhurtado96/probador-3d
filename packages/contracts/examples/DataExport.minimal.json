@@ -1,0 +1,59 @@
+{
+  "format": "probador.data_export",
+  "contracts_version": "0.3.0",
+  "exported_at": "2026-11-11T12:00:00Z",
+  "signed_urls_expire_at": "2026-11-11T13:00:00Z",
+  "original_photos_retained": false,
+  "notes": [
+    "Las fotos originales (cuerpo, selfie y prendas) no se conservan: se borran al procesarlas."
+  ],
+  "account": {
+    "id": "6f1c2a4e-1d2b-4c3a-9e8f-0a1b2c3d4e5f",
+    "email": "persona@example.com",
+    "created_at": "2026-11-01T09:00:00Z"
+  },
+  "profile": {
+    "id": "6f1c2a4e-1d2b-4c3a-9e8f-0a1b2c3d4e5f",
+    "display_name": null,
+    "locale": "es",
+    "age_confirmed_at": "2026-11-01T09:01:00Z",
+    "created_at": "2026-11-01T09:00:00Z",
+    "updated_at": "2026-11-01T09:01:00Z"
+  },
+  "consents": [
+    {
+      "id": "0b7e3c1a-2f4d-4e6b-8a9c-1d2e3f4a5b6c",
+      "user_id": "6f1c2a4e-1d2b-4c3a-9e8f-0a1b2c3d4e5f",
+      "purpose": "body_scan",
+      "text_version": "body_scan-2026-11",
+      "granted_at": "2026-11-01T09:02:00Z",
+      "withdrawn_at": null,
+      "created_at": "2026-11-01T09:02:00Z"
+    }
+  ],
+  "avatars": [],
+  "color_profiles": [],
+  "garments": [],
+  "fit_results": [],
+  "user_fit_preferences": null,
+  "outfits": [],
+  "drape_cache": [],
+  "jobs": [
+    {
+      "id": "3a9d8c7b-6e5f-4a3b-9c2d-1e0f9a8b7c6d",
+      "type": "avatar",
+      "status": "succeeded",
+      "progress": 1,
+      "stage": null,
+      "input": { "height_cm": 172, "consent_id": "0b7e3c1a-2f4d-4e6b-8a9c-1d2e3f4a5b6c" },
+      "error": null,
+      "attempts": 1,
+      "worker_version": "avatar-0.1",
+      "fake": false,
+      "input_deleted_at": "2026-11-01T09:05:00Z",
+      "created_at": "2026-11-01T09:03:00Z",
+      "started_at": "2026-11-01T09:03:10Z",
+      "finished_at": "2026-11-01T09:05:00Z"
+    }
+  ]
+}
