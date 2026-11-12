@@ -2,7 +2,7 @@
 
 Recopilados de los informes de los agentes. (Los hallazgos posteriores de la revisión crítica están en `docs/reviews/2026-11-11-revision-fase0.md`, con su estado; contratos v0.4.0.) Reconciliados el 2026-11-11: cada punto está **resuelto** (con el cambio hecho) o **pendiente** (con el motivo). Las decisiones están en `docs/architecture.md` §7; los contratos, en `packages/contracts` v0.3.0 (v0.3.0 solo añade `DataExport`).
 
-Resumen: 25 resueltos, 2 pendientes (25 y 27). Además quedan 2 implementaciones pendientes que no estaban en la lista (ver el final).
+Resumen: 26 resueltos, 1 pendiente (27). Además quedan 2 implementaciones pendientes que no estaban en la lista (ver el final).
 
 ## A. Decisiones de investigación que cambian la arquitectura
 
@@ -36,7 +36,7 @@ Resumen: 25 resueltos, 2 pendientes (25 y 27). Además quedan 2 implementaciones
 22. **`ColorProfile` sin `updated_at`.** Resuelto. Contrato, columna y trigger.
 23. **Buckets.** Resuelto. La arquitectura adopta lo implementado: `raw-uploads` + `assets` con carpetas por usuario (§3.3 y D5). El bucket `assets` admite ahora `application/json` para los patrones.
 24. **URLs firmadas de subida de 2 h.** Resuelto por decisión del usuario (D8): se aceptan. Mitigaciones documentadas y comprobadas: ruta única por job e intento, una sola subida por ruta (se quita `upsert`; el e2e verifica que la segunda subida falla), rutas autorizadas por intento, barrido a los 60 min. Desde la revisión de la fase 0 (D14) la URL deja además de servir en cuanto el job no la espera.
-25. **Empaquetado de las Edge Functions.** **Pendiente.** Motivo: solo se confirma desplegando en un proyecto de Supabase en la nube, que aún no existe; crearlo es decisión del usuario (coste y región). En local (`supabase functions serve`) las funciones importan `packages/contracts` y pasan el e2e. Al crear el proyecto, comprobar `supabase functions deploy` y, si el empaquetado no sigue los imports fuera de `supabase/`, copiar el contrato en el despliegue.
+25. **Empaquetado de las Edge Functions.** **Resuelto** (2026-11-12). Desplegadas las seis funciones en el proyecto `jxynipwqucetmeayyupi` (eu-west-3). `supabase/scripts/bundle_functions.ts` empaqueta cada una con `_shared/` y las constantes de `packages/contracts` en un `index.js`, más los JSON Schemas que usa y un `deno.json` del despliegue que los apunta en `./contracts/schemas/`; el desarrollo local sigue importando `../../packages/contracts`. Para no subir los seis schemas a cada función, los validadores se separaron en `_shared/validate_*.ts`. Las seis responden y validan en la nube (pruebas de humo en `supabase/README.md`).
 
 ## D. Monorepo
 

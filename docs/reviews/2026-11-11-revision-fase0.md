@@ -21,7 +21,7 @@ Además hay 8 hallazgos de gravedad media y 11 de gravedad baja.
 | A3 | Alta | Entradas y resultados de los jobs retenidos por Modal, posible salida de la UE | Comprobado en código; verificar con Modal | **Corregido en código** (`bef27d2`, `fcae63d`, `fa6d6aa`; D11). **Pendiente del usuario:** DPA y residencia UE de Modal |
 | M1 | Media | Prueba de consentimiento escrita por el cliente y archivo D6 que no se puede vincular a nadie | Comprobado (SQL) | **Corregido** (`bef27d2`, `fcae63d`; D13). Pendiente: textos legales definitivos |
 | M2 | Media | Ficheros que aparecen después de la baja o de la retirada y duran hasta ~48 h | Razonado sobre el código | **Corregido** (`fcae63d`; D14) |
-| M3 | Media | Edge Functions sin región fijada | Razonado; verificar en el despliegue | **Pendiente** (necesita el proyecto en la nube); verificación documentada (`ceac63b`) |
+| M3 | Media | Edge Functions sin región fijada | Comprobado en la nube (2026-11-12) | **Corregido en el backend** (pg_net y URLs del worker fijan eu-west-3). **Pendiente:** región fija en la app y prueba desde fuera de la UE |
 | M4 | Media | La caché de drapeado ignora `measurements_override` | Comprobado en código | **Corregido** (`fcae63d`) |
 | M5 | Media | Jobs de prenda sin consentimiento aunque las fotos pueden mostrar a la persona | Diseño | **Corregido con solución equivalente** (`bef27d2`, `fa6d6aa`, `ceac63b`; D12). Pendiente: control en el pipeline real |
 | M6 | Media | La red de seguridad de 60 min puede fallar en silencio | Comprobado en código | **Corregido** (`fcae63d`). Pendiente: elegir canal de alerta |
@@ -185,7 +185,7 @@ Hay que añadir el caso al pgTAP de retirada. Para `body_scan` el filtro `measur
 - Fijar la región de ejecución en una de la UE, con la cabecera o la opción de región de invocación que ofrezca Supabase, en la app, en `pg_net` y en el `callback_url`.
 - Añadirlo a la lista de subencargados de la EIPD.
 
-**Estado: pendiente** (necesita el proyecto en la nube). Paso de verificación documentado en `supabase/README.md`, «Verificar la región de ejecución de las Edge Functions» (`ceac63b`).
+**Estado: verificado y corregido en el backend** (2026-11-12, proyecto `jxynipwqucetmeayyupi`, eu-west-3). Sin indicar región, las funciones corrieron en eu-west-3 llamadas desde París; con `x-region: eu-central-1` corrieron en eu-central-1 y con `?forceFunctionRegion=us-east-1`, en us-east-1: el hallazgo se confirma, la región la decide quien llama. `private.invoke_maintenance` envía `x-region: eu-west-3` (`20261112000100_deploy_fixes.sql`) y `JOB_CALLBACK_URL` / `JOB_DISPATCH_URL` llevan `?forceFunctionRegion=eu-west-3`. Pendiente: la app debe invocar con `region: FunctionRegion.EuWest3` (aún no llama a las funciones), repetir la prueba desde fuera de la UE y añadir Supabase Edge Functions a los subencargados de la EIPD. Detalle en `supabase/README.md`.
 
 ### M4 · Media · La clave de caché del drapeado ignora las medidas corregidas por el usuario
 
