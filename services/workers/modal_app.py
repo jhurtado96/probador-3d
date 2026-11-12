@@ -53,8 +53,8 @@ app = modal.App("probador-workers", image=image, secrets=secrets)
 
 
 def _gpu(job_type: str):
-    g = GPU[job_type]
-    return None if g.lower() in {"", "none", "cpu"} else g
+    """`none` = CPU; varios tipos separados por comas = preferencia con alternativas si no hay capacidad en la región."""
+    return avatar_deploy.gpu_spec(GPU[job_type])
 
 
 def _opts(job_type: str) -> dict:

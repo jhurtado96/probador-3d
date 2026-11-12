@@ -56,6 +56,14 @@ AVATAR_ENV = {
 }
 
 
+def gpu_spec(value: str):
+    """`"L4,A10G"` -> `["L4", "A10G"]` (Modal prueba en orden según capacidad); `none`/`cpu` -> None."""
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    if not parts or parts[0].lower() in {"none", "cpu"}:
+        return None
+    return parts[0] if len(parts) == 1 else parts
+
+
 def avatar_base_image(base_pip: tuple[str, ...]):
     """Imagen con las dependencias de ML (sin código local: el llamador añade env, esquemas y paquete al final)."""
     import modal

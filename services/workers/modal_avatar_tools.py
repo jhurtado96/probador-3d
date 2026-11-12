@@ -21,7 +21,7 @@ from probador_workers.avatar import deploy as d
 from probador_workers.schemas import schemas_dir
 
 REGION = os.environ.get("PROBADOR_MODAL_REGION", "eu")
-GPU = os.environ.get("PROBADOR_GPU_AVATAR", "L4")
+GPU = d.gpu_spec(os.environ.get("PROBADOR_GPU_AVATAR", "L4,A10G"))
 image = (
     d.avatar_base_image(d.BASE_PIP)
     .env({"PROBADOR_SCHEMAS_DIR": "/contracts/schemas"})
