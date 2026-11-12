@@ -104,5 +104,5 @@ async def dispatch(request: Request) -> dict:
     except (ValueError, ContractError) as e:
         raise HTTPException(422, e.problems if isinstance(e, ContractError) else ["invalid json"])
     # Solo el aviso (ids) entra en la cola de Modal.
-    RUNNERS[data["type"]].spawn(data)
+    await RUNNERS[data["type"]].spawn.aio(data)
     return {"accepted": True, "job_id": data["job_id"], "attempt": data["attempt"]}

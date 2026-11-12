@@ -18,3 +18,5 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Registros de las últimas horas
         run: uvx modal app logs probador-workers --since 2h 2>&1 | tail -200 || true
+      - name: Contenedores en marcha
+        run: uvx modal container list 2>&1 | tail -30 || true
