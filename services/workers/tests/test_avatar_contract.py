@@ -20,7 +20,8 @@ from synthetic_body import synthetic_body
 W, H = 1000, 2000
 
 
-def person(cx=500.0, top=150.0, bottom=1900.0, score=0.98, sitting=False, crop_feet=False, kp_score=5.0) -> Detection:
+def person(cx=500.0, top=150.0, bottom=1900.0, score=0.98, sitting=False, crop_feet=False, kp_score=5.0,
+           facing="front") -> Detection:
     h = bottom - top
     y = {
         "nose": top + 0.06 * h, "left_eye": top + 0.05 * h, "right_eye": top + 0.05 * h, "left_ear": top + 0.06 * h,
@@ -35,7 +36,12 @@ def person(cx=500.0, top=150.0, bottom=1900.0, score=0.98, sitting=False, crop_f
             y[f"{s}_knee"] = y[f"{s}_hip"] + 0.02 * h
     kps = np.zeros((17, 3))
     for name, i in COCO.items():
-        dx = -60 if name.startswith("left") else (60 if name.startswith("right") else 0)
+        # de frente, el lado izquierdo de la persona sale a la derecha de la imagen
+        dx = 120 if name.startswith("left") else (-120 if name.startswith("right") else 0)
+        if facing == "back":
+            dx = -dx
+        elif facing == "profile":
+            dx = dx * 0.05
         kps[i] = [cx + dx, y[name], kp_score]
     if crop_feet:
         kps[COCO["left_ankle"], 2] = kps[COCO["right_ankle"], 2] = -3
@@ -57,6 +63,8 @@ def test_valid_photo_passes():
         ([person(bottom=H + 300)], "body_not_fully_visible"),
         ([person(top=1500, bottom=1950)], "low_image_quality"),
         ([person(sitting=True)], "pose_invalid"),
+        ([person(facing="profile")], "pose_invalid"),
+        ([person(facing="back")], "pose_invalid"),
     ],
 )
 def test_invalid_photos_fail_with_contract_codes(dets, code):

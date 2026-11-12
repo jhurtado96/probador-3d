@@ -42,6 +42,9 @@ COMMONS_QUERIES = (
     "standing man full body",
 )
 PUBLIC_LICENSES = ("cc0", "public domain", "pd")
+# Foto por defecto: retrato de cuerpo entero, de frente, de dominio público (Library of Congress, LCCN 99615637),
+# elegida porque pasó la validación en la primera prueba. La licencia se vuelve a comprobar con la API en cada ejecución.
+DEFAULT_TITLES = ("File:Full-length portrait of Transcaucasian man, standing, facing front LCCN99615637.jpg",)
 
 
 def _emit(tag: str, payload: dict) -> None:
@@ -151,30 +154,36 @@ def probe_mhr() -> dict:
     return info
 
 
-def _commons_candidates(limit: int = 12) -> list[dict]:
+def _commons_pages(params: dict) -> list[dict]:
     import httpx
 
-    seen, out = set(), []
+    base = {"action": "query", "format": "json", "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1600}
+    r = httpx.get("https://commons.wikimedia.org/w/api.php", params={**base, **params}, headers=UA, timeout=30)
+    r.raise_for_status()
+    out = []
+    for page in (r.json().get("query", {}).get("pages", {}) or {}).values():
+        ii = (page.get("imageinfo") or [{}])[0]
+        meta = ii.get("extmetadata", {})
+        lic = (meta.get("LicenseShortName", {}).get("value") or meta.get("License", {}).get("value") or "").lower()
+        if ii.get("mime") != "image/jpeg":
+            continue
+        if not any(lic.startswith(p) or p in lic for p in PUBLIC_LICENSES) or "cc-by" in lic or "cc by" in lic:
+            continue  # solo CC0 o dominio público, comprobado en los metadatos de Commons
+        if ii.get("height", 0) < 1.3 * ii.get("width", 1):
+            continue  # retrato vertical: probablemente de cuerpo entero
+        out.append({"title": page["title"], "license": lic, "url": ii.get("thumburl") or ii["url"],
+                    "page": ii.get("descriptionurl")})
+    return out
+
+
+def _commons_candidates(limit: int = 12) -> list[dict]:
+    out = _commons_pages({"titles": "|".join(DEFAULT_TITLES)})
+    seen = {c["title"] for c in out}
     for q in COMMONS_QUERIES:
-        params = {
-            "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6, "gsrsearch": f"{q} filetype:bitmap",
-            "gsrlimit": 40, "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1600,
-        }
-        r = httpx.get("https://commons.wikimedia.org/w/api.php", params=params, headers=UA, timeout=30)
-        r.raise_for_status()
-        for page in (r.json().get("query", {}).get("pages", {}) or {}).values():
-            ii = (page.get("imageinfo") or [{}])[0]
-            meta = ii.get("extmetadata", {})
-            lic = (meta.get("LicenseShortName", {}).get("value") or meta.get("License", {}).get("value") or "").lower()
-            if page["title"] in seen or ii.get("mime") != "image/jpeg":
-                continue
-            if not any(lic.startswith(p) or p in lic for p in PUBLIC_LICENSES) or "cc-by" in lic or "cc by" in lic:
-                continue
-            if ii.get("height", 0) < 1.3 * ii.get("width", 1):
-                continue  # retrato vertical: probablemente de cuerpo entero
-            seen.add(page["title"])
-            out.append({"title": page["title"], "license": lic, "url": ii.get("thumburl") or ii["url"],
-                        "page": ii.get("descriptionurl")})
+        for c in _commons_pages({"generator": "search", "gsrnamespace": 6, "gsrsearch": f"{q} filetype:bitmap", "gsrlimit": 40}):
+            if c["title"] not in seen:
+                seen.add(c["title"])
+                out.append(c)
             if len(out) >= limit:
                 return out
     return out

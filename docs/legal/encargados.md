@@ -7,6 +7,18 @@ Registro de los proveedores que tratan datos personales por cuenta nuestra. Sirv
 | Supabase | Base de datos, Storage, Auth, Edge Functions | Todos los de la app (cuenta, fotos temporales, medidas, perfil de color, armario) | eu-west-3 (París). Edge Functions: París por defecto, pero quien llama puede elegir región (ver `supabase/README.md`, M3) | DPA de Supabase (pendiente de descargar y archivar) | Pendiente de revisar en su DPA |
 | Modal Labs, Inc. (EE. UU.) | Workers GPU: avatar, prenda, drapeado, color | Dentro del contenedor (región `eu`): foto de cuerpo/cara (borrada tras procesarla), medidas, `user_id`. En su plano de control y cola: solo avisos con ids, sin `user_id` (ver `services/workers/README.md`) | Cómputo: región `eu` (EEE). Entrada del endpoint compartido: EE. UU. (la URL desplegada es `…dispatch.us-east.modal.run`). Cola de `.spawn()`: almacenamiento central en EE. UU. | DPA de Modal, vigente desde el 31-10-2025, incorporado por referencia en los términos (se acepta al aceptar los términos; no hay firma aparte) | Cláusulas contractuales tipo (Decisión 2021/914, módulos 2 y 3) incorporadas en el DPA; ley y foro de Suecia |
 
+## Proveedores que no reciben datos personales
+
+El pipeline del avatar corre entero dentro del contenedor de Modal (región `eu`): la foto no sale de ahí hacia ninguna API de terceros (SAM 3D Body, MHR y el detector se ejecutan en nuestra GPU con pesos propios en un volumen de Modal).
+
+| Proveedor | Para qué | Qué recibe |
+|---|---|---|
+| Hugging Face | Descarga única de los pesos de SAM 3D Body (repositorio con acceso restringido) a un volumen de Modal | Solo la petición de descarga con el token de lectura de nuestra cuenta; ningún dato de usuarios. Los workers trabajan sin conexión a Hugging Face (`HF_HUB_OFFLINE=1`) |
+| GitHub y download.pytorch.org | Código y assets de MHR y SAM 3D Body, pesos del detector | Nada de usuarios |
+| Wikimedia Commons | Solo la prueba automática del avatar (foto pública CC0 o de dominio público) | Nada de usuarios |
+
+Licencias de los modelos verificadas: `docs/research/avatar.md` §8 bis.
+
 ## Modal: puntos del DPA que nos afectan
 
 - **Aceptación.** El DPA forma parte del contrato; aceptar los términos de servicio equivale a firmar también las cláusulas contractuales tipo (apéndice 1, «Signatories»). Archivar una copia en PDF con la fecha.

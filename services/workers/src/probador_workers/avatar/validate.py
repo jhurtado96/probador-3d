@@ -103,6 +103,11 @@ def check_photo(detections: list[Detection], width: int, height: int) -> Detecti
     legs_extended = (kn[1] - hp[1]) > 0.25 * span and (an[1] - kn[1]) > 0.25 * span
     if not (upright and tilt < 25 and legs_extended):
         raise JobFailure("pose_invalid", "ponte de pie, de frente, con los brazos algo separados del cuerpo")
+    # De frente: el hombro izquierdo de la persona sale a la derecha de la imagen y los hombros están separados
+    # (de perfil casi se solapan). Umbral: un 30 % de la distancia vertical hombros-caderas (de frente, ~75 %).
+    shoulder_dx = _pt(main, "left_shoulder")[0] - _pt(main, "right_shoulder")[0]
+    if shoulder_dx < 0.3 * (hp[1] - sh[1]):
+        raise JobFailure("pose_invalid", "ponte de frente a la cámara, no de perfil ni de espaldas")
     return main
 
 

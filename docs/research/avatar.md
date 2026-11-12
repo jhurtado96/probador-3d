@@ -1,6 +1,6 @@
 # Avatar: foto de cuerpo entero + altura → cuerpo paramétrico + medidas
 
-Estado: diseño de fase 0 (2026-11-11). Nivel de verificación de cada dato: **[V]** fuente primaria abierta en esta sesión, **[S]** solo resumen de buscador, **[M]** memoria del autor, sin verificar. Lo marcado [S] o [M] debe confirmarse antes de firmar nada.
+Estado: diseño de fase 0 (2026-11-11); P1a implementado en `services/workers` (2026-11-12, ver §8 bis y el README del worker). Nivel de verificación de cada dato: **[V]** fuente primaria abierta en esta sesión, **[S]** solo resumen de buscador, **[M]** memoria del autor, sin verificar. Lo marcado [S] o [M] debe confirmarse antes de firmar nada.
 
 ## 1. Recomendación
 
@@ -118,6 +118,21 @@ Mantener como plan B una API de medidas por foto (Bodygram o 3DLOOK) y decidir e
 | Meshcapade | — | — | — | Comprada por Epic; servicios online apagados en abril de 2026 según una fuente [S]. Descartada |
 
 Condiciones para activar el plan B: contrato de encargo de tratamiento (RGPD), procesamiento en la UE o garantías equivalentes, borrado de fotos garantizado y prueba con nuestro conjunto de voluntarios (mismo umbral de 3 cm). Coste por usuario dos órdenes de magnitud superior al pipeline propio.
+
+## 8 bis. Licencias verificadas al implementar P1a (2026-11-12)
+
+Textos leídos en los repositorios clonados en los commits que fija el worker (`services/workers/src/probador_workers/avatar/deploy.py`). No sustituyen a la revisión legal.
+
+| Componente | Fuente verificada | Licencia | Uso comercial | Condiciones que nos afectan |
+|---|---|---|---|---|
+| SAM 3D Body, código **y pesos** | `LICENSE` y README de facebookresearch/sam-3d-body en `b5c765a` («The SAM 3D Body model checkpoints and code are licensed under SAM License») | SAM License, «Last Updated: November 19, 2025» [V] | Sí: licencia mundial, no exclusiva, gratuita, para usar, reproducir, distribuir y crear obras derivadas; **sin cláusula no comercial** [V] | Cumplir la normativa de privacidad y de control de exportaciones; prohibidos usos militares, nucleares, de espionaje, armas e ITAR; no hacer ingeniería inversa de los «SAM Materials»; citar si se publica investigación; redistribuir solo con copia de la licencia; indemnizar a Meta; Meta puede modificarla con efecto inmediato (§8); ley de California. La licencia de patentes cubre los «SAM 3 Materials» (errata del texto) |
+| Tarjeta del modelo en Hugging Face (`facebook/sam-3d-body-vith`) | No abierta: huggingface.co bloqueado desde esta sesión [—] | Según el README, la misma SAM License | — | Acceso restringido: hay que aceptar la licencia con una cuenta de HF. **Comprobar al aceptarla que el texto es el mismo** |
+| MHR, código | `LICENSE` de facebookresearch/MHR en `85fc2cb` y `pyproject.toml` (`Apache-2.0`) [V] | Apache 2.0 | Sí | Conservar avisos de copyright y licencia |
+| MHR, assets de la release v1.0.1 (`mhr_model.pt`, FBX, correctivos) | `assets/LICENSE.txt` dentro de `assets.zip` (sha256 `e4f4f205…`) [V] | Apache 2.0 | Sí | Ídem. El `mhr_model.pt` del checkpoint de SAM 3D Body se distribuye con él bajo la SAM License |
+| Topología LOD 2 y mapeo LOD 1→2 de MHR | `web-viewer/data/lod_topology.npz` y `tools/mhr_LOD_conversion/` en `85fc2cb` [V] | Apache 2.0 (repositorio) | Sí | — |
+| Detector de validación: Keypoint R-CNN de torchvision | torchvision BSD-3 [M]; pesos COCO de download.pytorch.org sin licencia propia declarada [M] | — | Por confirmar en P0 (mismo caso que cualquier modelo entrenado con COCO) | Si legal lo descarta, cambiarlo por la validación con los keypoints 2D de SAM 3D Body |
+
+Conclusión: la licencia de los pesos **no es no comercial**; se sigue con SAM 3D Body + MHR. Quedan para la revisión legal (P0) la indemnización y los cambios unilaterales de la SAM License, comprobar el texto de la tarjeta de Hugging Face al aceptar el acceso y los pesos del detector.
 
 ## 9. Riesgos abiertos
 
