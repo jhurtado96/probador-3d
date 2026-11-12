@@ -102,6 +102,18 @@ def probe_mhr() -> dict:
     from probador_workers.avatar import geometry, glb
     from probador_workers.avatar.pipeline import MhrRest, RestBody, build_body, landmarks_from_joints, load_lod_data, rig_source
 
+    # Las dependencias de SAM 3D Body están en la imagen (sin pesos no se puede construir el modelo)
+    import sys
+
+    sys.path.insert(0, os.environ["PROBADOR_SAM3DB_CODE_DIR"])
+    t0 = time.monotonic()
+    import sam_3d_body
+    from sam_3d_body import SAM3DBodyEstimator, load_sam_3d_body  # noqa: F401
+    from sam_3d_body.models.meta_arch import SAM3DBody  # noqa: F401
+
+    _emit("probe_sam3db_import", {"version": sam_3d_body.__version__, "seconds": round(time.monotonic() - t0, 2),
+                                  "torch": torch.__version__, "cuda": torch.version.cuda,
+                                  "gpu": torch.cuda.get_device_name(0)})
     t0 = time.monotonic()
     dev = torch.device("cuda")
     mhr = torch.jit.load(f"{MHR_PUBLIC}/mhr_model.pt", map_location=dev).eval()

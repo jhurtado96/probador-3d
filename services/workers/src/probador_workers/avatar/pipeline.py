@@ -308,7 +308,21 @@ class AvatarModels:
         if str(SAM3DB_CODE_DIR) not in sys.path:
             sys.path.insert(0, str(SAM3DB_CODE_DIR))
         with _quiet():
+            import sam_3d_body.build_models as sam3db_build
             from sam_3d_body import SAM3DBodyEstimator, load_sam_3d_body
+
+            _get_config = sam3db_build.get_config
+
+            def _config_without_flash_attn(path):
+                # flash-attn no está en la imagen: si la configuración del checkpoint lo pide, se usa la atención normal
+                cfg = _get_config(path)
+                if "FLASH_ATTN" in cfg.MODEL.BACKBONE:
+                    cfg.defrost()
+                    cfg.MODEL.BACKBONE.FLASH_ATTN = False
+                    cfg.freeze()
+                return cfg
+
+            sam3db_build.get_config = _config_without_flash_attn
 
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             if self.device.type != "cuda":
