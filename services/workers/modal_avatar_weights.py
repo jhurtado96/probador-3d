@@ -29,11 +29,14 @@ def download_sam3db(revision: str = "") -> dict:
     from pathlib import Path
 
     os.environ["HF_HUB_OFFLINE"] = "0"
-    token = os.environ.get("HF_TOKEN", "").strip()
+    token = next((os.environ[k].strip() for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN") if os.environ.get(k, "").strip()), "")
     if not token:
+        # Solo nombres de variables con pinta de token (nunca valores) para ayudar a corregir el secreto
+        names = sorted(k for k in os.environ if any(t in k.upper() for t in ("HF", "HUGGING", "TOKEN")))
         raise SystemExit(
-            f"El Modal Secret `{d.HF_SECRET}` no tiene HF_TOKEN. Créalo con un token de lectura de Hugging Face "
-            f"de una cuenta que haya aceptado la licencia de https://huggingface.co/{d.SAM3DB_HF_REPO}"
+            f"El Modal Secret no tiene la clave HF_TOKEN (claves parecidas encontradas: {names or 'ninguna'}). "
+            f"Crea el secreto `huggingface` con HF_TOKEN=<token de lectura> de una cuenta que haya aceptado la licencia "
+            f"de https://huggingface.co/{d.SAM3DB_HF_REPO}"
         )
     from huggingface_hub import HfApi, snapshot_download
     from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
