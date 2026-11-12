@@ -53,3 +53,12 @@ Resumen: 26 resueltos, 1 pendiente (27). Además quedan 2 implementaciones pendi
 - Revisión legal de la SAM License (SAM 3D Body) antes del MVP, y de si medidas corporales y perfil de color son categorías especiales (EIPD).
 - Caché de drapeado compartida entre usuarios de cuerpo parecido (`drape.md` §4): hoy es por usuario; compartirla es una decisión de privacidad y de producto.
 - `garment.md` propone un modelo de visión general para los atributos de la prenda: si es una API de terceros, hay que decidir si las fotos de prendas pueden salir de la infraestructura propia (la arquitectura lo prohíbe para fotos de personas).
+
+## Prueba de punta a punta en la nube (2026-11-12)
+
+Supabase (`jxynipwqucetmeayyupi`) → Modal (`probador-workers`, región `eu`) → Supabase, con un usuario de prueba y un job `avatar`:
+cola → maintenance despacha (13:13:01) → Modal pide el JobDispatch (13:13:17) → callback `failed`/`not_implemented` (esperado, sin pipeline) → la API borra la foto (13:13:21, `input_deleted_at`, 0 objetos en `raw-uploads`).
+
+Observaciones:
+- **Arranque de GPU.** En un intento, la A10G en la UE tardó unos 7 minutos en estar disponible; en otros, 15 segundos. Antes del lanzamiento: contenedor caliente en horas punta o lista de GPUs alternativas.
+- **Dispatch inválido sin callback.** Si el worker rechaza el JobDispatch por contrato (`dispatch_invalid`), no envía callback y el job sigue `queued` hasta su plazo; luego se reintenta y acaba `failed`. Funciona, pero tarda. Mejora: callback `failed` con `internal` cuando el aviso trae una URL de callback válida.
