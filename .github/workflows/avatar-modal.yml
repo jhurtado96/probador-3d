@@ -25,6 +25,10 @@ on:
         description: "Altura declarada para la prueba (cm)"
         required: false
         default: "175"
+      hf_secret:
+        description: "Nombre del Modal Secret con HF_TOKEN"
+        required: false
+        default: "huggingface"
       weight_kg:
         description: "Peso declarado para la prueba (kg; 0 = sin peso)"
         required: false
@@ -49,6 +53,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       PROBADOR_MODAL_REGION: eu
       TASK: ${{ inputs.task }}
+      PROBADOR_HF_SECRET: ${{ inputs.hf_secret || 'huggingface' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,11 +69,11 @@ jobs:
         run: |
           uv run modal secret list > secrets.txt 2>&1 || true
           tail -20 secrets.txt
-          if grep -qw huggingface secrets.txt; then
+          if grep -qw "$PROBADOR_HF_SECRET" secrets.txt; then
             echo "hf=1" >> "$GITHUB_OUTPUT"
           else
             echo "hf=0" >> "$GITHUB_OUTPUT"
-            echo "::warning::Falta el Modal Secret 'huggingface' (HF_TOKEN). Sin él no se pueden descargar los pesos de SAM 3D Body; ver services/workers/README.md"
+            echo "::warning::Falta el Modal Secret '$PROBADOR_HF_SECRET' (HF_TOKEN). Sin él no se pueden descargar los pesos de SAM 3D Body; ver services/workers/README.md"
           fi
 
       - name: Assets públicos (detector y MHR)

@@ -13,6 +13,8 @@ Versiones fijadas (revisadas el 2026-11-12):
 
 from __future__ import annotations
 
+import os
+
 SAM3DB_REPO = "https://github.com/facebookresearch/sam-3d-body"
 SAM3DB_COMMIT = "b5c765a0d89d789985e186d396315e7590887b94"  # main, 2026-02-19
 SAM3DB_VARIANT = "vith"
@@ -24,7 +26,7 @@ MHR_ASSETS_SHA256 = "e4f4f205cd87c0fa106577ba1de4fc763e4eb197c924461d2ef7e6944e9
 
 WEIGHTS_VOLUME = "probador-avatar-weights"
 WEIGHTS_MOUNT = "/weights"
-HF_SECRET = "huggingface"  # Modal Secret con HF_TOKEN; SOLO lo usa modal_avatar_weights.py
+HF_SECRET = os.environ.get("PROBADOR_HF_SECRET", "huggingface")  # Modal Secret con HF_TOKEN; SOLO lo usa modal_avatar_weights.py
 
 BASE_PIP = ("httpx>=0.27", "jsonschema[format-nongpl]>=4.21", "fastapi>=0.110", "numpy>=1.26", "pillow>=10.4")
 ML_PIP = (
