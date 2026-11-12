@@ -4,6 +4,11 @@ name: Registros de Modal
 
 on:
   workflow_dispatch:
+    inputs:
+      app:
+        description: "App de Modal (probador-workers, probador-avatar-tools, probador-avatar-weights)"
+        required: false
+        default: probador-workers
 
 permissions:
   contents: read
@@ -16,7 +21,11 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     steps:
       - uses: astral-sh/setup-uv@v6
+      - name: Apps
+        run: uvx modal app list 2>&1 | tail -20 || true
       - name: Registros de las últimas horas
-        run: uvx modal app logs probador-workers --since 2h 2>&1 | tail -200 || true
+        env:
+          APP: ${{ inputs.app || 'probador-workers' }}
+        run: timeout 60 uvx modal app logs "$APP" --since 2h 2>&1 | tail -200 || true
       - name: Contenedores en marcha
         run: uvx modal container list 2>&1 | tail -30 || true
