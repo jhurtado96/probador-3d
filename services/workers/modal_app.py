@@ -45,21 +45,43 @@ def _gpu(job_type: str):
     return None if g.lower() in {"", "none", "cpu"} else g
 
 
-def _make_gpu_function(job_type: str):
-    @app.function(name=f"run_{job_type}", gpu=_gpu(job_type), region=REGION, timeout=JOB_TIMEOUT_S[job_type], retries=0)
-    def run(notice: dict) -> None:
-        from probador_workers.config import Config
-        from probador_workers.logging_setup import setup_logging
-        from probador_workers.runner import execute_notice
-
-        setup_logging()
-        execute_notice(notice, Config.from_env())
-        return None  # nada que Modal pueda guardar como resultado
-
-    return run
+def _opts(job_type: str) -> dict:
+    # Modal exige funciones en ámbito global (sin fábricas): una por tipo, con las mismas opciones.
+    return dict(name=f"run_{job_type}", gpu=_gpu(job_type), region=REGION, timeout=JOB_TIMEOUT_S[job_type], retries=0)
 
 
-RUNNERS = {t: _make_gpu_function(t) for t in JOB_TYPES}
+def _run(notice: dict) -> None:
+    from probador_workers.config import Config
+    from probador_workers.logging_setup import setup_logging
+    from probador_workers.runner import execute_notice
+
+    setup_logging()
+    execute_notice(notice, Config.from_env())
+    return None  # nada que Modal pueda guardar como resultado
+
+
+@app.function(**_opts("avatar"))
+def run_avatar(notice: dict) -> None:
+    return _run(notice)
+
+
+@app.function(**_opts("garment"))
+def run_garment(notice: dict) -> None:
+    return _run(notice)
+
+
+@app.function(**_opts("drape"))
+def run_drape(notice: dict) -> None:
+    return _run(notice)
+
+
+@app.function(**_opts("color"))
+def run_color(notice: dict) -> None:
+    return _run(notice)
+
+
+RUNNERS = {"avatar": run_avatar, "garment": run_garment, "drape": run_drape, "color": run_color}
+assert set(RUNNERS) == set(JOB_TYPES)
 
 
 @app.function(name="dispatch", region=REGION)

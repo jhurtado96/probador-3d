@@ -65,5 +65,9 @@ def test_modal_app_parses_and_declares_region_and_gpu():
     ast.parse(src)
     assert "region=REGION" in src and "gpu=_gpu(job_type)" in src
     # A3: la función GPU recibe el aviso y no devuelve nada que Modal pueda guardar; B4: timeout = plazo de la API.
-    assert "def run(notice: dict) -> None:" in src and "execute_notice(" in src
+    assert "def _run(notice: dict) -> None:" in src and "execute_notice(" in src
     assert "timeout=JOB_TIMEOUT_S[job_type]" in src
+    # Modal exige funciones globales: una por tipo de job.
+    tree = ast.parse(src)
+    top = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+    assert {"run_avatar", "run_garment", "run_drape", "run_color"} <= top
