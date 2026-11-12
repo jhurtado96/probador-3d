@@ -4,6 +4,7 @@
 #   probe   MHR sin SAM 3D Body: pose canónica, peso, GLB (no necesita Hugging Face)
 #   weights pesos de SAM 3D Body desde Hugging Face (necesita el Modal Secret `huggingface` con HF_TOKEN)
 #   smoke   pipeline completo con una foto pública CC0 / dominio público descargada dentro de Modal
+#           (sin los pesos de SAM 3D Body solo prueba descarga, decodificación y validación de la foto)
 #   all     todo lo anterior en orden
 # Requiere en GitHub: MODAL_TOKEN_ID y MODAL_TOKEN_SECRET (los mismos que el despliegue).
 name: Avatar en Modal
@@ -83,7 +84,7 @@ jobs:
         run: uv run modal run modal_avatar_weights.py
 
       - name: Prueba real del pipeline completo
-        if: env.TASK == 'smoke' || (env.TASK == 'all' && steps.secrets.outputs.hf == '1')
+        if: env.TASK == 'smoke' || env.TASK == 'all'
         env:
           IMAGE_URL: ${{ inputs.image_url }}
           HEIGHT_CM: ${{ inputs.height_cm }}

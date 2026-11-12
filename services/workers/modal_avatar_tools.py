@@ -180,6 +180,42 @@ def _commons_candidates(limit: int = 12) -> list[dict]:
     return out
 
 
+def _validation_only(image_url: str) -> dict:
+    """Sin pesos de SAM 3D Body: prueba al menos descarga, decodificación y validación de la foto con el detector."""
+    import time
+
+    import httpx
+    import torch
+
+    from probador_workers.avatar import validate
+    from probador_workers.avatar.pipeline import PersonDetector
+    from probador_workers.errors import JobFailure
+
+    t0 = time.monotonic()
+    det = PersonDetector(torch.device("cuda"))
+    load_s = round(time.monotonic() - t0, 2)
+    candidates = [{"title": "parámetro", "license": "(declarada por quien lanza la prueba)", "url": image_url}] if image_url \
+        else _commons_candidates()
+    results = []
+    for cand in candidates:
+        photo = httpx.get(cand["url"], headers=UA, timeout=60, follow_redirects=True).content
+        t = time.monotonic()
+        try:
+            img = validate.decode_image(photo)
+            main = validate.check_photo(det.detect(img), img.shape[1], img.shape[0])
+            verdict = {"ok": True, "quality": round(validate.detection_quality(main), 3)}
+        except JobFailure as e:
+            verdict = {"ok": False, "code": e.code}
+        finally:
+            del photo
+        results.append({"title": cand["title"], "license": cand.get("license"), "page": cand.get("page"),
+                        "seconds": round(time.monotonic() - t, 3), **verdict})
+    report = {"mode": "validation_only", "detector_load_s": load_s, "candidates": results,
+              "blocked_by": "faltan los pesos de SAM 3D Body (Modal Secret `huggingface`)"}
+    _emit("smoke_validation_only", report)
+    return report
+
+
 @app.function(volumes=VOL, gpu=GPU, region=REGION, timeout=1200)
 def smoke_avatar(image_url: str = "", height_cm: float = 175.0, weight_kg: float = 0.0) -> dict:
     """Pipeline completo con una foto pública: dos pasadas (en frío y en caliente) y solo métricas en el log."""
@@ -194,7 +230,11 @@ def smoke_avatar(image_url: str = "", height_cm: float = 175.0, weight_kg: float
     from probador_workers.schemas import validate_callback
 
     t0 = time.monotonic()
-    models = AvatarModels.get()
+    try:
+        models = AvatarModels.get()
+    except JobFailure as e:
+        _emit("smoke_blocked", {"code": e.code, "message": str(e)})
+        return _validation_only(image_url)
     cold_load = round(time.monotonic() - t0, 2)
     _emit("smoke_models", {"load_s": cold_load, "model_version": models.model_version, "rig": models.rig is not None})
     candidates = [{"title": "parámetro", "license": "(declarada por quien lanza la prueba)", "url": image_url}] if image_url \

@@ -276,7 +276,7 @@ def measure_body(verts: np.ndarray, faces: np.ndarray, kp: dict[str, np.ndarray]
     y_chest = best[0] if best else y_sh - 0.3 * d
 
     best = None
-    for y in _levels(y_hip + 0.15 * d, min(y_hip + 0.65 * d, y_chest - 0.02), step):
+    for y in _levels(y_hip + 0.15 * d, min(y_hip + 0.55 * d, y_chest - 0.02), step):
         lp = torso_at(y)
         if lp is not None and (best is None or lp.hull_perimeter < best[1]):
             best = (y, lp.hull_perimeter)
@@ -365,9 +365,16 @@ def measure_body(verts: np.ndarray, faces: np.ndarray, kp: dict[str, np.ndarray]
         "bicep_cm": avg([bone_girth(f"{s}_shoulder", f"{s}_elbow", 0.5) for s in ("left", "right")]),
         "wrist_cm": avg([bone_girth(f"{s}_elbow", f"{s}_wrist", 0.97) for s in ("left", "right")]),
     }
-    neck_loops = horizontal_loops(verts, faces, float(k["neck"][UP]) + 0.02)
-    nl = _torso_loop(neck_loops, k["neck"][[0, 2]]) or _nearest_loop(neck_loops, k["neck"][[0, 2]])
-    optional["neck_cm"] = nl.hull_perimeter * 100 if nl else None
+    # cuello: mínimo contorno horizontal de la columna del cuello entre la base (punto `neck`) y la barbilla
+    neck_xz = k["neck"][[0, 2]]
+    y_nk, y_face = float(k["neck"][UP]), float(k["nose"][UP]) - 0.06 * d
+    best = None
+    for y in _levels(y_nk, y_face, step):
+        loops = horizontal_loops(verts, faces, y)
+        lp = _torso_loop(loops, neck_xz) or _nearest_loop(loops, neck_xz)
+        if lp is not None and lp.width_x < 0.6 * acr_dist and (best is None or lp.hull_perimeter < best[1]):
+            best = (y, lp.hull_perimeter)
+    optional["neck_cm"] = best[1] * 100 if best else None
 
     def leg_girth(y, side_points):
         lps = lower_loops(y)

@@ -253,6 +253,32 @@ def build_body(rest: RestBody, faces_lod1: np.ndarray, height_cm: float, rig: di
 # ---------------------------------------------------------------------------
 
 
+class PersonDetector:
+    """Keypoint R-CNN de torchvision (pesos COCO en TORCH_HOME, en el volumen) para validar la foto."""
+
+    def __init__(self, device) -> None:
+        import torch
+        from torchvision.models.detection import KeypointRCNN_ResNet50_FPN_Weights, keypointrcnn_resnet50_fpn
+
+        self.torch = torch
+        self.device = device
+        self.model = keypointrcnn_resnet50_fpn(weights=KeypointRCNN_ResNet50_FPN_Weights.COCO_V1).to(device).eval()
+
+    def detect(self, img: np.ndarray) -> list[validate.Detection]:
+        t = self.torch
+        with t.no_grad():
+            x = t.as_tensor(img, device=self.device).permute(2, 0, 1).float() / 255.0
+            out = self.model([x])[0]
+            del x
+        dets = []
+        for i in range(len(out["scores"])):
+            if int(out["labels"][i]) != 1:
+                continue
+            kps = t.cat([out["keypoints"][i][:, :2], out["keypoints_scores"][i][:, None]], dim=1)
+            dets.append(validate.Detection(out["boxes"][i].cpu().numpy(), float(out["scores"][i]), kps.cpu().numpy()))
+        return dets
+
+
 class AvatarModels:
     _instance: "AvatarModels | None" = None
     _lock = threading.Lock()
@@ -295,9 +321,7 @@ class AvatarModels:
         self.rig = rig_source(head.mhr)
         self.lod = load_lod_data(EXPORT_LOD)
 
-        from torchvision.models.detection import KeypointRCNN_ResNet50_FPN_Weights, keypointrcnn_resnet50_fpn
-
-        self.detector = keypointrcnn_resnet50_fpn(weights=KeypointRCNN_ResNet50_FPN_Weights.COCO_V1).to(self.device).eval()
+        self.detector = PersonDetector(self.device)
         self.torch = torch
         manifest = read_manifest()
         self.model_version = model_version(SAM3DB_VARIANT, manifest.get("sam3db_revision", "unknown"), SAM3DB_COMMIT)
@@ -307,18 +331,7 @@ class AvatarModels:
                   torchvision=torchvision.__version__)
 
     def detect(self, img: np.ndarray) -> list[validate.Detection]:
-        t = self.torch
-        with t.no_grad():
-            x = t.as_tensor(img, device=self.device).permute(2, 0, 1).float() / 255.0
-            out = self.detector([x])[0]
-            del x
-        dets = []
-        for i in range(len(out["scores"])):
-            if int(out["labels"][i]) != 1:
-                continue
-            kps = t.cat([out["keypoints"][i][:, :2], out["keypoints_scores"][i][:, None]], dim=1)
-            dets.append(validate.Detection(out["boxes"][i].cpu().numpy(), float(out["scores"][i]), kps.cpu().numpy()))
-        return dets
+        return self.detector.detect(img)
 
     def estimate(self, img: np.ndarray, box: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         with _quiet():
