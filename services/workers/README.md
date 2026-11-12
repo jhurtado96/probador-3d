@@ -96,6 +96,7 @@ Los esquemas se montan en la imagen desde `packages/contracts/schemas`: desplieg
 | `PROBADOR_ALLOW_INSECURE_LOCALHOST` | permite `http://localhost` | `1` salvo producción |
 | `PROBADOR_MODAL_REGION` | región Modal (solo en despliegue): `eu` = cualquier país del EEE (1,15x); `eu-west`/`eu-north`/`eu-south` fijan zona (1,75x) | `eu` |
 | `PROBADOR_GPU_AVATAR` / `_GARMENT` / `_DRAPE` / `_COLOR` | GPU por tipo (`none` = CPU; varias separadas por comas = alternativas por capacidad); valores iniciales sin medir salvo el avatar | `L4,A10G` / `T4` / `A10G` / `T4` |
+| `PROBADOR_HF_SECRET` | nombre del Modal Secret con `HF_TOKEN` (solo `modal_avatar_weights.py`; input `hf_secret` del workflow) | `huggingface` |
 | `PROBADOR_AVATAR_WEIGHT_FIT` | ajustar la forma al peso declarado (`0` lo desactiva) | `1` |
 | `PROBADOR_AVATAR_EXPORT_LOD` | LOD de MHR del GLB (1: 36.874 triángulos; 2: 21.318) | `2` |
 | `PROBADOR_MAX_DOWNLOAD_BYTES`, `PROBADOR_MAX_UPLOAD_BYTES`, `PROBADOR_HTTP_TIMEOUT_S` | límites | 25 MB, 64 MB, 30 s |
