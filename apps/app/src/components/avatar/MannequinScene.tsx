@@ -7,9 +7,10 @@
  *
  * El maniquí está hecho con primitivas y en pose A, que es la misma pose que se
  * pide en la guía de captura. Mide ~1,75 unidades (1 unidad = 1 m) y tiene los
- * pies en y = 0. Cuando exista el GLB real del avatar (glTF/GLB) sustituirá a
- * <Mannequin />.
+ * pies en y = 0. Si hay GLB del avatar (`model`, mismo sistema: metros, Y
+ * arriba, pies en el origen) se dibuja en su lugar.
  */
+import type { Object3D } from 'three';
 
 type Vec3 = [number, number, number];
 
@@ -18,6 +19,8 @@ type SceneProps = {
   rotationY: number;
   /** Color base del maniquí (depende del tema). */
   color: string;
+  /** Escena del GLB del avatar; null o ausente = maniquí. */
+  model?: Object3D | null;
 };
 
 const A_POSE_ARM_ANGLE = 0.5; // ~29° respecto a la vertical
@@ -109,7 +112,7 @@ export function Mannequin({ color }: { color: string }) {
 }
 
 /** Contenido del lienzo: luces, peana y maniquí. */
-export function MannequinScene({ rotationY, color }: SceneProps) {
+export function MannequinScene({ rotationY, color, model }: SceneProps) {
   return (
     <>
       <hemisphereLight args={['#ffffff', '#8a8178', 0.9]} />
@@ -118,7 +121,7 @@ export function MannequinScene({ rotationY, color }: SceneProps) {
       {/* Bajamos todo para que el centro del cuerpo quede en el origen de la cámara. */}
       <group position={[0, -0.88, 0]}>
         <group rotation={[0, rotationY, 0]}>
-          <Mannequin color={color} />
+          {model ? <primitive object={model} /> : <Mannequin color={color} />}
         </group>
         <mesh position={[0, -0.015, 0]}>
           <cylinderGeometry args={[0.45, 0.45, 0.03, 48]} />

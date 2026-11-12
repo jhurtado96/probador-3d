@@ -29,7 +29,17 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Probador 3D necesita acceder a tus fotos para que elijas una foto de cuerpo entero o de una prenda. Solo se sube la foto que elijas y se borra tras procesarla.",
+          "cameraPermission": "Probador 3D usa la cámara para hacer la foto de cuerpo entero o de una prenda. La foto se borra tras procesarla.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -17,14 +17,14 @@ export function AvatarViewer(props: AvatarViewerProps) {
   return (
     <AvatarViewerShell
       {...props}
-      renderCanvas={({ rotationY, mannequinColor, background }) => (
+      renderCanvas={({ rotationY, mannequinColor, background, model }) => (
         <Canvas
           camera={CAMERA}
           dpr={[1, 2]}
           style={{ width: '100%', height: '100%', touchAction: 'pan-y' }}
         >
           <color attach="background" args={[background]} />
-          <MannequinScene rotationY={rotationY} color={mannequinColor} />
+          <MannequinScene rotationY={rotationY} color={mannequinColor} model={model} />
         </Canvas>
       )}
     />

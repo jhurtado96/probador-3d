@@ -30,9 +30,10 @@ Medidas:
 2. Worker: los secretos `JOB_CALLBACK_URL` y `JOB_DISPATCH_URL` llevan
    `?forceFunctionRegion=eu-west-3` (ver «Despliegue en la nube»). La firma HMAC
    cubre solo el cuerpo, así que el parámetro no la afecta.
-3. App (aún no llama a las funciones): **obligatorio** usar
-   `supabase.functions.invoke(..., { region: FunctionRegion.EuWest3 })` o la
-   cabecera `x-region: eu-west-3` en todas las llamadas.
+3. App: todas las llamadas llevan `?forceFunctionRegion=eu-west-3`
+   (`apps/app/src/lib/api.ts`). No usa `functions.invoke(..., { region })`
+   porque añade la cabecera `x-region`, que el CORS de las funciones no admite
+   (`docs/integration-issues.md`, conexión de la app, punto 1).
 4. Pendiente del usuario: repetir la prueba desde fuera de la UE (con y sin
    región fijada) antes de abrir el servicio, guardar la evidencia con la EIPD y
    añadir Supabase Edge Functions (eu-west-3) a la lista de subencargados.
@@ -402,8 +403,8 @@ consentimiento archivado con el HMAC de su id.
 
 - `POST /consents` no es una función: la app inserta en `consents` con RLS y el
   servidor fija fecha y versión (D13). Faltan los textos legales definitivos.
-- M3: verificado y mitigado en pg_net y en las URLs del worker; falta fijar la
-  región en la app y repetir la prueba desde fuera de la UE (ver arriba).
+- M3: verificado y mitigado en pg_net, en las URLs del worker y en la app;
+  falta repetir la prueba desde fuera de la UE (ver arriba).
 - D6 (archivo de consentimientos) y D7 (`export-data`) están implementados;
   falta la revisión legal del plazo de 3 años y del bloqueo antes del lanzamiento.
 - Desplegado en la nube (ver «Despliegue en la nube»). `supabase functions deploy`

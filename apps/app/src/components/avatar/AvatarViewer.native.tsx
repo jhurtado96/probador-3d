@@ -15,10 +15,10 @@ export function AvatarViewer(props: AvatarViewerProps) {
   return (
     <AvatarViewerShell
       {...props}
-      renderCanvas={({ rotationY, mannequinColor, background }) => (
+      renderCanvas={({ rotationY, mannequinColor, background, model }) => (
         <Canvas camera={CAMERA} style={{ flex: 1 }}>
           <color attach="background" args={[background]} />
-          <MannequinScene rotationY={rotationY} color={mannequinColor} />
+          <MannequinScene rotationY={rotationY} color={mannequinColor} model={model} />
         </Canvas>
       )}
     />

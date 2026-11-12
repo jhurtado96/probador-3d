@@ -9,10 +9,11 @@
   ],
   "scripts": {
     "test:contracts": "npm test --workspace @probador/contracts",
+    "test:app": "npm test --workspace @probador/app",
     "schemas": "npm run schemas --workspace @probador/contracts",
     "typecheck:app": "npm run typecheck --workspace @probador/app",
     "export:web": "npm run export:web --workspace @probador/app",
-    "check": "npm run test:contracts && npm run typecheck:app"
+    "check": "npm run test:contracts && npm run test:app && npm run typecheck:app"
   },
   "engines": {
     "node": ">=20"
