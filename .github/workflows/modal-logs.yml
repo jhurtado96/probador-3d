@@ -1,0 +1,20 @@
+# Muestra los registros recientes de los workers en Modal (diagnóstico manual desde la pestaña Actions).
+# Los workers no registran datos personales ni secretos (ver services/workers/README.md).
+name: Registros de Modal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: astral-sh/setup-uv@v6
+      - name: Registros de las últimas horas
+        run: uvx modal app logs probador-workers --since 2h 2>&1 | tail -200 || true
