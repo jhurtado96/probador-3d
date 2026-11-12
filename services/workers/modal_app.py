@@ -25,6 +25,7 @@ from probador_workers.schemas import schemas_dir
 REGION = os.environ.get("PROBADOR_MODAL_REGION", "eu")  # región amplia UE (EEE), multiplicador 1,15x; ver docs.modal.com region-selection
 FAKE = os.environ.get("PROBADOR_FAKE", "0")
 ENV = os.environ.get("PROBADOR_ENV", "production")
+ALLOWED_URL_HOSTS = os.environ.get("PROBADOR_ALLOWED_URL_HOSTS", "")  # host del proyecto Supabase (no es secreto)
 GPU = {t: os.environ.get(f"PROBADOR_GPU_{t.upper()}", DEFAULT_GPU[t]) for t in JOB_TYPES}
 REMOTE_SCHEMAS = "/contracts/schemas"
 
@@ -32,7 +33,8 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("httpx>=0.27", "jsonschema[format-nongpl]>=4.21", "fastapi>=0.110")
     # Las dependencias de ML de cada worker se añadirán aquí (una imagen por worker, ver docs/architecture.md).
-    .env({"PROBADOR_ENV": ENV, "PROBADOR_FAKE": FAKE, "PROBADOR_SCHEMAS_DIR": REMOTE_SCHEMAS, "PROBADOR_ALLOW_INSECURE_LOCALHOST": "0"})
+    .env({"PROBADOR_ENV": ENV, "PROBADOR_FAKE": FAKE, "PROBADOR_SCHEMAS_DIR": REMOTE_SCHEMAS, "PROBADOR_ALLOW_INSECURE_LOCALHOST": "0",
+          "PROBADOR_ALLOWED_URL_HOSTS": ALLOWED_URL_HOSTS})
     .add_local_dir(str(schemas_dir()), remote_path=REMOTE_SCHEMAS)
     .add_local_python_source("probador_workers")
 )

@@ -31,6 +31,7 @@ jobs:
       PROBADOR_ENV: production
       PROBADOR_FAKE: "0"
       PROBADOR_MODAL_REGION: eu
+      PROBADOR_ALLOWED_URL_HOSTS: jxynipwqucetmeayyupi.supabase.co
     steps:
       - uses: actions/checkout@v4
 
