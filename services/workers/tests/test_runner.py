@@ -59,6 +59,8 @@ def test_fake_mode_produces_valid_marked_outputs(cfg, job_type):
 
 
 def test_real_mode_reports_not_implemented(cfg, job_type):
+    if job_type == "avatar":
+        pytest.skip("el avatar ya tiene pipeline real (tests/test_avatar_contract.py)")
     sink = ListSink()
     final = execute(make_dispatch(job_type), cfg, sink, transfer=recording_transfer(cfg, []), fake=False)
     assert final["status"] == "failed"

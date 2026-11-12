@@ -19,6 +19,7 @@ from pathlib import Path
 import modal
 from fastapi import HTTPException, Request
 
+from probador_workers.avatar import deploy as avatar_deploy
 from probador_workers.config import DEFAULT_GPU, JOB_TIMEOUT_S, JOB_TYPES
 from probador_workers.schemas import schemas_dir
 
@@ -29,15 +30,24 @@ ALLOWED_URL_HOSTS = os.environ.get("PROBADOR_ALLOWED_URL_HOSTS", "")  # host del
 GPU = {t: os.environ.get(f"PROBADOR_GPU_{t.upper()}", DEFAULT_GPU[t]) for t in JOB_TYPES}
 REMOTE_SCHEMAS = "/contracts/schemas"
 
-image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install("httpx>=0.27", "jsonschema[format-nongpl]>=4.21", "fastapi>=0.110")
-    # Las dependencias de ML de cada worker se añadirán aquí (una imagen por worker, ver docs/architecture.md).
-    .env({"PROBADOR_ENV": ENV, "PROBADOR_FAKE": FAKE, "PROBADOR_SCHEMAS_DIR": REMOTE_SCHEMAS, "PROBADOR_ALLOW_INSECURE_LOCALHOST": "0",
-          "PROBADOR_ALLOWED_URL_HOSTS": ALLOWED_URL_HOSTS})
-    .add_local_dir(str(schemas_dir()), remote_path=REMOTE_SCHEMAS)
-    .add_local_python_source("probador_workers")
-)
+BASE_PIP = avatar_deploy.BASE_PIP
+
+
+def _finish(img: modal.Image) -> modal.Image:
+    """Capas comunes al final de cada imagen: entorno, esquemas del contrato y código del worker."""
+    return (
+        img.env({"PROBADOR_ENV": ENV, "PROBADOR_FAKE": FAKE, "PROBADOR_SCHEMAS_DIR": REMOTE_SCHEMAS,
+                 "PROBADOR_ALLOW_INSECURE_LOCALHOST": "0", "PROBADOR_ALLOWED_URL_HOSTS": ALLOWED_URL_HOSTS})
+        .add_local_dir(str(schemas_dir()), remote_path=REMOTE_SCHEMAS)
+        .add_local_python_source("probador_workers")
+    )
+
+
+image = _finish(modal.Image.debian_slim(python_version="3.11").pip_install(*BASE_PIP))
+# Una imagen por worker con ML (docs/architecture.md). Avatar: SAM 3D Body + MHR, versiones en probador_workers/avatar/deploy.py.
+avatar_image = _finish(avatar_deploy.avatar_base_image(BASE_PIP))
+# Pesos de SAM 3D Body y del detector en un volumen: se descargan una vez (modal_avatar_weights.py), no en cada arranque.
+avatar_weights = avatar_deploy.weights_volume()
 secrets = [modal.Secret.from_name("probador-workers")]  # PROBADOR_DISPATCH_SECRET, PROBADOR_CALLBACK_SECRET
 app = modal.App("probador-workers", image=image, secrets=secrets)
 
@@ -62,7 +72,7 @@ def _run(notice: dict) -> None:
     return None  # nada que Modal pueda guardar como resultado
 
 
-@app.function(**_opts("avatar"))
+@app.function(**_opts("avatar"), image=avatar_image, volumes={avatar_deploy.WEIGHTS_MOUNT: avatar_weights})
 def run_avatar(notice: dict) -> None:
     return _run(notice)
 

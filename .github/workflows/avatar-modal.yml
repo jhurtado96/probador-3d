@@ -1,0 +1,91 @@
+# Worker de avatar en Modal: descarga de pesos y pruebas reales sin Supabase (manual, desde la pestaña Actions).
+#   check   comprueba que existen los Modal Secrets (solo nombres)
+#   assets  pesos del detector y assets públicos de MHR al volumen `probador-avatar-weights`
+#   probe   MHR sin SAM 3D Body: pose canónica, peso, GLB (no necesita Hugging Face)
+#   weights pesos de SAM 3D Body desde Hugging Face (necesita el Modal Secret `huggingface` con HF_TOKEN)
+#   smoke   pipeline completo con una foto pública CC0 / dominio público descargada dentro de Modal
+#   all     todo lo anterior en orden
+# Requiere en GitHub: MODAL_TOKEN_ID y MODAL_TOKEN_SECRET (los mismos que el despliegue).
+name: Avatar en Modal
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Tarea"
+        type: choice
+        options: [check, assets, probe, weights, smoke, all]
+        default: all
+      image_url:
+        description: "URL pública de una foto CC0 / dominio público (vacío: buscar en Wikimedia Commons)"
+        required: false
+        default: ""
+      height_cm:
+        description: "Altura declarada para la prueba (cm)"
+        required: false
+        default: "175"
+      weight_kg:
+        description: "Peso declarado para la prueba (kg; 0 = sin peso)"
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: avatar-modal
+  cancel-in-progress: false
+
+jobs:
+  avatar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: services/workers
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      PROBADOR_MODAL_REGION: eu
+      TASK: ${{ inputs.task }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Instalar
+        run: uv sync --extra modal
+
+      - name: Secretos de Modal (solo nombres)
+        id: secrets
+        run: |
+          uv run modal secret list > secrets.txt 2>&1 || true
+          tail -20 secrets.txt
+          if grep -qw huggingface secrets.txt; then
+            echo "hf=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "hf=0" >> "$GITHUB_OUTPUT"
+            echo "::warning::Falta el Modal Secret 'huggingface' (HF_TOKEN). Sin él no se pueden descargar los pesos de SAM 3D Body; ver services/workers/README.md"
+          fi
+
+      - name: Assets públicos (detector y MHR)
+        if: env.TASK == 'assets' || env.TASK == 'all'
+        run: uv run modal run modal_avatar_tools.py::fetch_public_assets
+
+      - name: Prueba de MHR sin SAM 3D Body
+        if: env.TASK == 'probe' || env.TASK == 'all'
+        run: uv run modal run modal_avatar_tools.py::probe_mhr
+
+      - name: Pesos de SAM 3D Body (Hugging Face)
+        if: (env.TASK == 'weights' || env.TASK == 'all') && steps.secrets.outputs.hf == '1'
+        run: uv run modal run modal_avatar_weights.py
+
+      - name: Prueba real del pipeline completo
+        if: env.TASK == 'smoke' || (env.TASK == 'all' && steps.secrets.outputs.hf == '1')
+        env:
+          IMAGE_URL: ${{ inputs.image_url }}
+          HEIGHT_CM: ${{ inputs.height_cm }}
+          WEIGHT_KG: ${{ inputs.weight_kg }}
+        run: uv run modal run modal_avatar_tools.py::smoke_avatar --image-url "$IMAGE_URL" --height-cm "$HEIGHT_CM" --weight-kg "$WEIGHT_KG"

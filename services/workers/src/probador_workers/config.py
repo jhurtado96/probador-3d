@@ -9,7 +9,7 @@ from pathlib import Path
 from .errors import ConfigError
 
 JOB_TYPES = ("avatar", "garment", "drape", "color")
-DEFAULT_GPU = {"avatar": "A10G", "garment": "T4", "drape": "A10G", "color": "T4"}
+DEFAULT_GPU = {"avatar": "L4", "garment": "T4", "drape": "A10G", "color": "T4"}
 # Plazo de un intento, igual que private.job_timeout de la API (B4): Modal corta la función a la vez que la API da el
 # intento por vencido, así un intento viejo no sigue corriendo mientras se despacha el siguiente.
 JOB_TIMEOUT_S = {"avatar": 600, "garment": 600, "drape": 600, "color": 300}
