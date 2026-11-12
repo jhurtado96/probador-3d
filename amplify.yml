@@ -1,0 +1,25 @@
+# AWS Amplify Hosting: publica la versión web de la app (apps/app) desde este monorepo.
+# En la consola de Amplify, al conectar el repositorio, marca "monorepo" con la carpeta apps/app
+# (Amplify define AMPLIFY_MONOREPO_APP_ROOT=apps/app). Hace falta una regla de reescritura SPA
+# (ver apps/app/README.md, sección "Publicar en AWS").
+version: 1
+applications:
+  - appRoot: apps/app
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm install 22 && nvm use 22
+            - (cd ../.. && npm ci)
+        build:
+          commands:
+            - nvm use 22
+            - (cd ../.. && npm run check)
+            - npx expo export --platform web
+      artifacts:
+        baseDirectory: dist
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - ../../node_modules/**/*

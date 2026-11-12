@@ -171,3 +171,16 @@ Sigue el modo claro/oscuro del sistema (`userInterfaceStyle: "automatic"`). Colo
 - `@react-three/drei` no es totalmente compatible con nativo (p. ej. `OrbitControls`, `Html`); por eso el giro se hace con `PanResponder` propio.
 - El giro re-renderiza la escena en cada movimiento (suficiente para un maniquí sencillo); con mallas pesadas convendrá mover la rotación a `useFrame`/refs.
 - Hot reload en nativo puede dejar el contexto GL en mal estado; si el visor queda en negro, recarga la app.
+
+## Publicar en AWS (Amplify Hosting)
+
+La web se publica con AWS Amplify Hosting usando `amplify.yml` de la raíz. Cada push a `main` la vuelve a publicar.
+
+1. Consola de AWS → región **eu-west-3 (París)** → Amplify → *Create new app* → GitHub → repositorio `probador-3d`, rama `main`.
+2. Marca **«My app is a monorepo»** y pon `apps/app` como carpeta.
+3. Amplify detecta `amplify.yml`. Crea el rol de servicio que propone y despliega.
+4. *Hosting → Rewrites and redirects → Manage redirects*, añade esta regla (la app es de una sola página):
+   - Source: `</^[^.]+$|\.(?!(css|gif|ico|jpg|jpeg|js|png|txt|svg|woff|woff2|ttf|map|json|webp|wasm|glb)$)([^.]+$)/>`
+   - Target: `/index.html`
+   - Type: `200 (Rewrite)`
+5. En Supabase → Authentication → URL Configuration, pon la URL de Amplify (`https://main.<id>.amplifyapp.com`) como *Site URL* y en *Redirect URLs*.
