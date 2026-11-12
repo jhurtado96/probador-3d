@@ -35,8 +35,8 @@ import {
   type GarmentJobInput,
   type Job,
   type UploadTicket,
-  validate,
 } from "../_shared/contracts.ts";
+import { validate } from "../_shared/validate_create_job.ts";
 import { dispatchQueued } from "../_shared/dispatch.ts";
 import { env } from "../_shared/env.ts";
 import { sha256Hex } from "../_shared/hmac.ts";

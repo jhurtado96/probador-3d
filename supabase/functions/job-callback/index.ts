@@ -17,7 +17,7 @@
 // Respuestas: 200 {result: applied|already_terminal}, 409 {result: stale_attempt},
 // 400/401/404/422/503 con {error}.
 
-import { validate } from "../_shared/contracts.ts";
+import { validate } from "../_shared/validate_callback.ts";
 import { env } from "../_shared/env.ts";
 import { verifyRequest } from "../_shared/hmac.ts";
 import { handler, HttpError, json } from "../_shared/http.ts";

@@ -15,7 +15,7 @@
 //
 // Respuestas: 200 JobDispatch; 400/401/409 con {error}. Cache-Control: no-store.
 
-import { validate } from "../_shared/contracts.ts";
+import { validate } from "../_shared/validate_dispatch.ts";
 import { buildDispatch, type ClaimedJob } from "../_shared/dispatch.ts";
 import { env } from "../_shared/env.ts";
 import { verifyRequest } from "../_shared/hmac.ts";

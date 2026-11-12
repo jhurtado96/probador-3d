@@ -28,7 +28,8 @@ import { createClient } from "@supabase/supabase-js";
 import postgres from "postgres";
 import { signedHeaders, verifyRequest } from "../../functions/_shared/hmac.ts";
 import { CONTRACTS_VERSION, type DataExport, type JobDispatch, type JobDispatchNotice } from "@probador/contracts";
-import { validate } from "../../functions/_shared/contracts.ts";
+import { validate as validateDispatch } from "../../functions/_shared/validate_dispatch.ts";
+import { validate as validateExport } from "../../functions/_shared/validate_export.ts";
 
 const env = (k: string, d?: string) => {
   const v = Deno.env.get(k) ?? d;
@@ -218,7 +219,7 @@ Deno.test({
       // A3: el aviso que llega al proveedor de GPU solo lleva identificadores.
       const notice = await waitForNotice(jobId);
       assert.deepEqual(Object.keys(notice).sort(), ["attempt", "contracts_version", "dispatch_url", "job_id", "type"]);
-      assert.ok(validate.jobDispatchNotice(notice).ok);
+      assert.ok(validateDispatch.jobDispatchNotice(notice).ok);
       assert.ok(!JSON.stringify(notice).includes(uid), "el aviso no lleva el user_id");
       const forgedFetch = await fetchDispatch(notice, "otro-secreto");
       assert.equal(forgedFetch.status, 401, "job-dispatch exige la firma del worker");
@@ -481,7 +482,7 @@ Deno.test({
       assert.equal(res.status, 200, JSON.stringify(res.body));
       assert.match(res.headers.get("content-disposition") ?? "", /attachment/);
       assert.equal(res.headers.get("cache-control"), "no-store");
-      const checked = validate.dataExport(res.body);
+      const checked = validateExport.dataExport(res.body);
       assert.ok(checked.ok, JSON.stringify(!checked.ok && checked.errors));
       const exp = res.body as DataExport;
 

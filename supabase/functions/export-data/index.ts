@@ -25,8 +25,8 @@ import {
   GARMENT_EMBEDDING_DIMENSIONS,
   JOB_RETENTION_DAYS,
   type JobResult,
-  validate,
 } from "../_shared/contracts.ts";
+import { validate } from "../_shared/validate_export.ts";
 import { env } from "../_shared/env.ts";
 import { corsHeaders, handler, HttpError } from "../_shared/http.ts";
 import { ASSETS_BUCKET, publicUrl, splitPath } from "../_shared/storage.ts";

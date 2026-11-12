@@ -1,27 +1,14 @@
-// Validación contra los JSON Schemas de packages/contracts (fuente única de
-// verdad, generados desde src/index.ts). No se copian: se importan.
+// Tipos y constantes de packages/contracts (fuente única de verdad) y el
+// validador Ajv común. Los JSON Schemas no se copian: se importan, cada uno en
+// su módulo `validate_*.ts`, para que cada Edge Function cargue (y despliegue)
+// solo los que usa:
+//   validate_create_job.ts  CreateJobRequest                  (create-job)
+//   validate_dispatch.ts    JobDispatch, Notice y Fetch       (create-job, job-dispatch, maintenance)
+//   validate_callback.ts    JobCallback y salidas por tipo    (job-callback)
+//   validate_export.ts      DataExport                        (export-data)
 
-import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
+import { Ajv, type AnySchema, type ErrorObject, type ValidateFunction } from "ajv";
 import addFormatsModule from "ajv-formats";
-
-import createJobRequestSchema from "@probador/contracts/schemas/create_job_request.schema.json" with {
-  type: "json",
-};
-import jobCallbackSchema from "@probador/contracts/schemas/job_callback.schema.json" with {
-  type: "json",
-};
-import jobDispatchSchema from "@probador/contracts/schemas/job_dispatch.schema.json" with {
-  type: "json",
-};
-import jobDispatchNoticeSchema from "@probador/contracts/schemas/job_dispatch_notice.schema.json" with {
-  type: "json",
-};
-import jobDispatchFetchSchema from "@probador/contracts/schemas/job_dispatch_fetch.schema.json" with {
-  type: "json",
-};
-import dataExportSchema from "@probador/contracts/schemas/data_export.schema.json" with {
-  type: "json",
-};
 
 export type {
   ApiErrorBody,
@@ -55,16 +42,6 @@ export {
   JOB_TYPES,
 } from "@probador/contracts";
 
-import type {
-  CreateJobRequest,
-  DataExport,
-  JobCallback,
-  JobDispatch,
-  JobDispatchFetch,
-  JobDispatchNotice,
-  JobType,
-} from "@probador/contracts";
-
 // ajv-formats es CommonJS: según el cargador, el plugin llega como default o como default.default.
 type FormatsPlugin = (ajv: Ajv) => Ajv;
 const addFormats: FormatsPlugin = (addFormatsModule as unknown as { default?: FormatsPlugin }).default ??
@@ -72,41 +49,26 @@ const addFormats: FormatsPlugin = (addFormatsModule as unknown as { default?: Fo
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
-ajv.addSchema(createJobRequestSchema);
-ajv.addSchema(jobCallbackSchema);
-ajv.addSchema(jobDispatchSchema);
-ajv.addSchema(jobDispatchNoticeSchema);
-ajv.addSchema(jobDispatchFetchSchema);
-ajv.addSchema(dataExportSchema);
 
-function compiled(id: string): ValidateFunction {
+/** Registra un JSON Schema del contrato (una vez por módulo) y devuelve su `$id`. */
+export function addSchema(schema: unknown): string {
+  const id = (schema as { $id: string }).$id;
+  if (!ajv.getSchema(id)) ajv.addSchema(schema as AnySchema);
+  return id;
+}
+
+/** Validador compilado de un schema registrado (o de una de sus `#/definitions/...`). */
+export function compiled(id: string): ValidateFunction {
   const fn = ajv.getSchema(id);
   if (!fn) throw new Error(`schema ${id} not found`);
   return fn;
 }
 
-const CALLBACK_ID = (jobCallbackSchema as { $id: string }).$id;
-
-const validators = {
-  createJobRequest: compiled((createJobRequestSchema as { $id: string }).$id),
-  jobCallback: compiled(CALLBACK_ID),
-  jobDispatch: compiled((jobDispatchSchema as { $id: string }).$id),
-  jobDispatchNotice: compiled((jobDispatchNoticeSchema as { $id: string }).$id),
-  jobDispatchFetch: compiled((jobDispatchFetchSchema as { $id: string }).$id),
-  dataExport: compiled((dataExportSchema as { $id: string }).$id),
-  output: {
-    avatar: compiled(`${CALLBACK_ID}#/definitions/AvatarJobOutput`),
-    garment: compiled(`${CALLBACK_ID}#/definitions/GarmentJobOutput`),
-    drape: compiled(`${CALLBACK_ID}#/definitions/DrapeJobOutput`),
-    color: compiled(`${CALLBACK_ID}#/definitions/ColorJobOutput`),
-  } satisfies Record<JobType, ValidateFunction>,
-};
-
 export type ValidationResult<T> =
   | { ok: true; value: T }
   | { ok: false; errors: Array<{ path: string; message: string }> };
 
-function result<T>(fn: ValidateFunction, data: unknown): ValidationResult<T> {
+export function result<T>(fn: ValidateFunction, data: unknown): ValidationResult<T> {
   if (fn(data)) return { ok: true, value: data as T };
   return {
     ok: false,
@@ -116,13 +78,3 @@ function result<T>(fn: ValidateFunction, data: unknown): ValidationResult<T> {
     })),
   };
 }
-
-export const validate = {
-  createJobRequest: (d: unknown) => result<CreateJobRequest>(validators.createJobRequest, d),
-  jobCallback: (d: unknown) => result<JobCallback>(validators.jobCallback, d),
-  jobDispatch: (d: unknown) => result<JobDispatch>(validators.jobDispatch, d),
-  jobDispatchNotice: (d: unknown) => result<JobDispatchNotice>(validators.jobDispatchNotice, d),
-  jobDispatchFetch: (d: unknown) => result<JobDispatchFetch>(validators.jobDispatchFetch, d),
-  dataExport: (d: unknown) => result<DataExport>(validators.dataExport, d),
-  output: (type: JobType, d: unknown) => result<unknown>(validators.output[type], d),
-};

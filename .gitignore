@@ -5,6 +5,7 @@ __pycache__/
 .expo/
 *.log
 supabase/.temp/
+supabase/.deploy/
 supabase/.branches/
 .env
 .env.*

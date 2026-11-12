@@ -18,8 +18,8 @@ import {
   type JobDispatchNotice,
   type JobType,
   type SignedUpload,
-  validate,
 } from "./contracts.ts";
+import { validate } from "./validate_dispatch.ts";
 import { env } from "./env.ts";
 import { signedHeaders } from "./hmac.ts";
 import { ASSETS_BUCKET, publicUrl, splitPath } from "./storage.ts";
