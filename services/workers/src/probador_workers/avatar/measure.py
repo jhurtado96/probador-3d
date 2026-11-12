@@ -251,8 +251,22 @@ def measure_body(verts: np.ndarray, faces: np.ndarray, kp: dict[str, np.ndarray]
             return None  # sin tronco o con los brazos pegados al corte
         return lp
 
+    # Axila: el nivel más alto bajo los hombros en el que los dos brazos ya son bucles separados del tronco. Por encima,
+    # el corte del tronco incluye los deltoides y el pecho saldría inflado.
+    y_armpit = y_sh - 0.1 * d
+    for y in _levels(y_sh - 0.5 * d, y_sh, step)[::-1]:
+        loops = horizontal_loops(verts, faces, y)
+        torso = _torso_loop(loops, center)
+        if torso is None:
+            continue
+        side = [lp for lp in loops if lp is not torso and not point_in_polygon(center, lp.xz)]
+        if any(lp.centroid[0] - center[0] > 0.05 for lp in side) and any(lp.centroid[0] - center[0] < -0.05 for lp in side):
+            y_armpit = min(y - 0.01, y_sh - 0.1 * d)
+            break
+    res.levels_m["armpit"] = y_armpit
+
     best = None
-    for y in _levels(y_sh - 0.5 * d, y_sh - 0.1 * d, step):
+    for y in _levels(y_sh - 0.5 * d, y_armpit, step):
         lp = torso_at(y)
         if lp is not None and (best is None or lp.hull_perimeter > best[1]):
             best = (y, lp.hull_perimeter)

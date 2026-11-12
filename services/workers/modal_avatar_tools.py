@@ -97,7 +97,7 @@ def probe_mhr() -> dict:
     import torch
 
     from probador_workers.avatar import geometry, glb
-    from probador_workers.avatar.pipeline import MhrRest, load_lod_data, rig_source
+    from probador_workers.avatar.pipeline import MhrRest, RestBody, build_body, landmarks_from_joints, load_lod_data, rig_source
 
     t0 = time.monotonic()
     dev = torch.device("cuda")
@@ -127,6 +127,19 @@ def probe_mhr() -> dict:
     _emit("probe_weight_fit", {"seconds": round(time.monotonic() - t1, 2), "mass_err_before": round(before, 3),
                                "mass_err_after": round(after, 3), "delta_norm": round(float(np.linalg.norm(shape)), 3)})
     lod = load_lod_data(2)
+    # Medición sobre la malla real de MHR con puntos de referencia aproximados desde las articulaciones (sin SAM 3D Body)
+    for label, coeff in (("neutral", 0.0), ("body0_plus", 1.5), ("body0_minus", -1.5), ("body1_plus", 1.5)):
+        shp = np.zeros(45)
+        shp[1 if label.startswith("body1") else 0] = coeff
+        rb = rest.rest(shp, None)
+        rb = RestBody(rb.verts_cm, rb.skel_state, landmarks_from_joints(names, rb.skel_state[:, :3]))
+        for height in (175.0, 160.0):
+            t2 = time.monotonic()
+            built = build_body(rb, faces, height, rig, lod)
+            _emit("probe_measure", {"shape": label, "height_cm": height, "seconds": round(time.monotonic() - t2, 2),
+                                    "pose": built.pose, "measurements_cm": built.measurements_cm,
+                                    "warnings": built.metrics["measure_warnings"],
+                                    "levels_m": built.metrics["measure_levels_m"], "glb_bytes": built.metrics["glb_bytes"]})
     if rig is not None:
         G = geometry.skeleton_state_to_matrices(body.skel_state.copy())
         G[:, :3, 3] /= 100

@@ -44,6 +44,26 @@ KP70 = {
 }
 
 
+# Aproximación de los puntos de referencia con las articulaciones de MHR (solo si no hay mapeo de keypoints de SAM 3D
+# Body, p. ej. en la prueba con el MHR público). Los acromion se aproximan desde la articulación del brazo.
+JOINT_LANDMARKS = {
+    "neck": "c_neck", "left_shoulder": "l_uparm", "right_shoulder": "r_uparm", "left_elbow": "l_lowarm",
+    "right_elbow": "r_lowarm", "left_wrist": "l_wrist", "right_wrist": "r_wrist", "left_hip": "l_upleg",
+    "right_hip": "r_upleg", "left_knee": "l_lowleg", "right_knee": "r_lowleg", "left_ankle": "l_foot", "right_ankle": "r_foot",
+}
+
+
+def landmarks_from_joints(names: list[str], joints: np.ndarray) -> dict[str, np.ndarray]:
+    """Puntos de referencia aproximados desde las articulaciones de MHR (mismas unidades que `joints`)."""
+    j = {n: np.asarray(joints[i], dtype=np.float64) for i, n in enumerate(names)}
+    out = {k: j[v] for k, v in JOINT_LANDMARKS.items()}
+    out["nose"] = (j["l_eye"] + j["r_eye"]) / 2
+    unit = np.linalg.norm(j["l_uparm"] - j["r_uparm"]) / 0.352  # escala relativa (cm o m)
+    for s, sign in (("left", 1.0), ("right", -1.0)):
+        out[f"{s}_acromion"] = out[f"{s}_shoulder"] + np.array([sign * 0.015, 0.035, 0.0]) * unit
+    return out
+
+
 def sam3db_dir() -> Path:
     return WEIGHTS_DIR / f"sam-3d-body-{SAM3DB_VARIANT}"
 
@@ -223,6 +243,7 @@ def build_body(rest: RestBody, faces_lod1: np.ndarray, height_cm: float, rig: di
         "joints": len(rig["names"]) if rig else 0,
         "pose": pose,
         "measure_warnings": res.warnings,
+        "measure_levels_m": {k: round(v, 3) for k, v in res.levels_m.items()},
     }
     return BodyBuild(data, res.measurements_cm, pose, s, metrics)
 
