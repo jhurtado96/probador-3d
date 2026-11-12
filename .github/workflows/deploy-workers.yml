@@ -1,0 +1,54 @@
+# Despliega los workers en Modal (región UE) cuando cambian en main, o a mano desde la pestaña Actions.
+# Requiere en GitHub (Settings → Secrets and variables → Actions): MODAL_TOKEN_ID y MODAL_TOKEN_SECRET.
+# Los secretos de firma NO pasan por aquí: viven en el Modal Secret `probador-workers`, creado en el panel de Modal.
+name: Desplegar workers en Modal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/workers/**"
+      - "packages/contracts/schemas/**"
+      - ".github/workflows/deploy-workers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-workers
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/workers
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      PROBADOR_ENV: production
+      PROBADOR_FAKE: "0"
+      PROBADOR_MODAL_REGION: eu
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Comprobar que hay token de Modal
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
+            echo "::error::Faltan los secretos MODAL_TOKEN_ID / MODAL_TOKEN_SECRET en GitHub"; exit 1
+          fi
+
+      - name: Instalar
+        run: uv sync --extra modal
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Desplegar
+        run: uv run modal deploy modal_app.py

@@ -32,7 +32,7 @@ class Config:
     max_download_bytes: int = 25 * 1024 * 1024
     max_upload_bytes: int = 64 * 1024 * 1024
     http_timeout_s: float = 30.0
-    modal_region: str = "eu-west"
+    modal_region: str = "eu"
     gpu: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_GPU))
 
     @classmethod
@@ -52,7 +52,7 @@ class Config:
             max_download_bytes=int(os.environ.get("PROBADOR_MAX_DOWNLOAD_BYTES", 25 * 1024 * 1024)),
             max_upload_bytes=int(os.environ.get("PROBADOR_MAX_UPLOAD_BYTES", 64 * 1024 * 1024)),
             http_timeout_s=float(os.environ.get("PROBADOR_HTTP_TIMEOUT_S", 30)),
-            modal_region=os.environ.get("PROBADOR_MODAL_REGION", "eu-west"),
+            modal_region=os.environ.get("PROBADOR_MODAL_REGION", "eu"),
             gpu=gpu,
         )
         cfg.check()

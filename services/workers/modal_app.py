@@ -22,7 +22,7 @@ from fastapi import HTTPException, Request
 from probador_workers.config import DEFAULT_GPU, JOB_TIMEOUT_S, JOB_TYPES
 from probador_workers.schemas import schemas_dir
 
-REGION = os.environ.get("PROBADOR_MODAL_REGION", "eu-west")  # (verificar) nombre de región/plan Modal para UE
+REGION = os.environ.get("PROBADOR_MODAL_REGION", "eu")  # región amplia UE (EEE), multiplicador 1,15x; ver docs.modal.com region-selection
 FAKE = os.environ.get("PROBADOR_FAKE", "0")
 ENV = os.environ.get("PROBADOR_ENV", "production")
 GPU = {t: os.environ.get(f"PROBADOR_GPU_{t.upper()}", DEFAULT_GPU[t]) for t in JOB_TYPES}

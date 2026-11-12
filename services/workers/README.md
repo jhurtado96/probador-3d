@@ -63,7 +63,7 @@ con `generator: "probador-workers FAKE"`, sin embedding. **Se rechaza con `PROBA
 ```bash
 uv sync --extra modal
 modal secret create probador-workers PROBADOR_DISPATCH_SECRET=... PROBADOR_CALLBACK_SECRET=...
-PROBADOR_ENV=production PROBADOR_MODAL_REGION=eu-west modal deploy modal_app.py
+PROBADOR_ENV=production PROBADOR_MODAL_REGION=eu modal deploy modal_app.py
 ```
 
 `dispatch` (CPU, región UE) valida la firma y el JobDispatchNotice, hace `.spawn()` a `run_<tipo>` (GPU por tipo, región
@@ -89,7 +89,7 @@ Los esquemas se montan en la imagen desde `packages/contracts/schemas`: desplieg
 | `PROBADOR_SCHEMAS_DIR` | carpeta de schemas | `../../packages/contracts/schemas` |
 | `PROBADOR_ALLOWED_URL_HOSTS` | lista de hosts (o sufijos) permitidos para URLs firmadas, `dispatch_url` y callback, separados por comas. **Obligatoria en producción** (el host del proyecto de Supabase). Siempre se rechazan IP literales, `localhost`, `*.local` e `*.internal` salvo en desarrollo (B3) | cualquiera (solo https) en desarrollo |
 | `PROBADOR_ALLOW_INSECURE_LOCALHOST` | permite `http://localhost` | `1` salvo producción |
-| `PROBADOR_MODAL_REGION` | región Modal (solo en despliegue) | `eu-west` |
+| `PROBADOR_MODAL_REGION` | región Modal (solo en despliegue): `eu` = cualquier país del EEE (1,15x); `eu-west`/`eu-north`/`eu-south` fijan zona (1,75x) | `eu` |
 | `PROBADOR_GPU_AVATAR` / `_GARMENT` / `_DRAPE` / `_COLOR` | GPU por tipo (`none` = CPU); valores iniciales sin medir | `A10G` / `T4` / `A10G` / `T4` |
 | `PROBADOR_MAX_DOWNLOAD_BYTES`, `PROBADOR_MAX_UPLOAD_BYTES`, `PROBADOR_HTTP_TIMEOUT_S` | límites | 25 MB, 64 MB, 30 s |
 
